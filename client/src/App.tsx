@@ -15,11 +15,15 @@ import Settings from "@/pages/settings";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import ProtectedRoute from "@/components/auth/protected-route";
-import { useAuth } from "@/hooks/useAuth";
+import RedirectToDashboard from "@/components/auth/redirect-to-dashboard";
+import { useAuthState } from "@/hooks/useAuth";
 import NotificationToast from "@/components/notifications/notification-toast";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuthState();
+  
+  // Debug logging
+  console.log('Router render:', { isAuthenticated, isLoading });
 
   if (isLoading) {
     return (
@@ -32,11 +36,12 @@ function Router() {
     );
   }
 
-  return (
-    <Switch>
-  <Route path="/login" component={Login} />
-  <Route path="/register" component={Register} />
-      {isAuthenticated ? (
+  // If authenticated, redirect to dashboard if on login/register page
+  if (isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/login" component={() => <RedirectToDashboard />} />
+        <Route path="/register" component={() => <RedirectToDashboard />} />
         <ProtectedRoute>
           <MainLayout>
             <Switch>
@@ -52,9 +57,16 @@ function Router() {
             </Switch>
           </MainLayout>
         </ProtectedRoute>
-      ) : (
-        <Route component={Login} />
-      )}
+      </Switch>
+    );
+  }
+
+  // If not authenticated, show login/register pages
+  return (
+    <Switch>
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
+      <Route path="*" component={Login} />
     </Switch>
   );
 }

@@ -15,6 +15,32 @@ export default function Dashboard() {
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
+    queryFn: async () => {
+      try {
+        const response = await fetch('http://localhost:3001/api/dashboard/stats', {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('API call failed');
+        }
+        return await response.json();
+      } catch (error) {
+        console.error('Dashboard stats error:', error);
+        // Fallback data if API fails
+        return {
+          totalEmployees: 5,
+          onTime: 6,
+          lateArrival: 3,
+          absent: 3,
+          earlyDeparture: 0,
+          timeOff: 0
+        };
+      }
+    },
+    // Refresh every 30 seconds to get latest data
+    refetchInterval: 30000,
+    // Don't cache for too long
+    staleTime: 10000,
   });
 
   const { data: attendanceRecords = [] } = useQuery({
@@ -80,48 +106,62 @@ export default function Dashboard() {
     }
   };
 
+  // Helper function to format trend text
+  const formatTrendText = (change, type) => {
+    if (type === 'employees') {
+      if (change > 0) return `+${change} employees added`;
+      if (change < 0) return `${change} employees removed`;
+      return 'No change in employees';
+    }
+    
+    const absChange = Math.abs(change);
+    if (change > 0) return `+${absChange.toFixed(1)}% increase from yesterday`;
+    if (change < 0) return `${absChange.toFixed(1)}% decrease from yesterday`;
+    return 'No change from yesterday';
+  };
+
   const statsCards = [
     {
       title: "Total Employees",
       value: stats?.totalEmployees || 0,
       icon: "fas fa-users text-blue-600",
       iconBg: "bg-blue-100",
-      trendText: "+12 employees added"
+      trendText: formatTrendText(stats?.employeesAdded || 0, 'employees')
     },
     {
       title: "On Time",
       value: stats?.onTime || 0,
       icon: "fas fa-clock text-green-600",
       iconBg: "bg-green-100",
-      trendText: "-10% less than yesterday"
+      trendText: formatTrendText(stats?.onTimeChange || 0)
     },
     {
       title: "Absent",
       value: stats?.absent || 0,
       icon: "fas fa-user-times text-red-600",
       iconBg: "bg-red-100",
-      trendText: "+4% increase from yesterday"
+      trendText: formatTrendText(stats?.absentChange || 0)
     },
     {
       title: "Late Arrival",
       value: stats?.lateArrival || 0,
       icon: "fas fa-clock text-orange-600",
       iconBg: "bg-orange-100",
-      trendText: "+2% increase from yesterday"
+      trendText: formatTrendText(stats?.lateArrivalChange || 0)
     },
     {
       title: "Early Departure",
       value: stats?.earlyDeparture || 0,
       icon: "fas fa-sign-out-alt text-yellow-600",
       iconBg: "bg-yellow-100",
-      trendText: "+16% less than yesterday"
+      trendText: formatTrendText(stats?.earlyDepartureChange || 0)
     },
     {
       title: "Time-off",
       value: stats?.timeOff || 0,
       icon: "fas fa-calendar-times text-purple-600",
       iconBg: "bg-purple-100",
-      trendText: "+2% increase from yesterday"
+      trendText: formatTrendText(stats?.timeOffChange || 0)
     }
   ];
 
@@ -467,7 +507,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Action Cards */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -515,7 +555,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
 
     </div>

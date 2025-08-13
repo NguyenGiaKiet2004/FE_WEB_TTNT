@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuthState } from "@/hooks/useAuth";
 
 export default function ProtectedRoute({ children }) {
   const [location, setLocation] = useLocation();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuthState();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {

@@ -25,27 +25,74 @@ export default function Settings() {
   });
 
   const { data: settings, isLoading } = useQuery({
-    queryKey: ["/api/settings"],
+    queryKey: ["/api/system/configs"],
+    queryFn: async () => {
+      const response = await fetch("http://localhost:3001/api/system/configs", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch settings");
+      }
+      return response.json();
+    },
+    // Don't cache for too long
+    staleTime: 5000,
   });
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (settingsData) => {
-      const response = await fetch("/api/settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(settingsData),
+      console.log('🔄 Updating settings:', settingsData);
+      
+      // Convert form data to system config format
+      const configUpdates = [
+        { key: 'work_start_time', value: settingsData.workStartTime + ':00' },
+        { key: 'work_end_time', value: settingsData.workEndTime + ':00' },
+        { key: 'late_threshold', value: settingsData.workStartTime + ':00' },
+        { key: 'early_departure_threshold', value: settingsData.workEndTime + ':00' },
+        { key: 'grace_period_minutes', value: settingsData.gracePeriodMinutes.toString() },
+        { key: 'max_late_period_minutes', value: settingsData.maxLatePeriodMinutes.toString() },
+        { key: 'recognition_threshold', value: settingsData.recognitionThreshold },
+        { key: 'min_training_images', value: settingsData.minTrainingImages.toString() },
+        { key: 'email_notifications', value: settingsData.emailNotifications.toString() },
+        { key: 'daily_reports', value: settingsData.dailyReports.toString() },
+        { key: 'weekly_reports', value: settingsData.weeklyReports.toString() },
+      ];
+
+      console.log('📝 Config updates to send:', configUpdates);
+
+      // Update each configuration
+      const updatePromises = configUpdates.map(async (config) => {
+        console.log(`🔄 Updating ${config.key} = ${config.value}`);
+        
+        const response = await fetch(`http://localhost:3001/api/system/configs/${config.key}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ value: config.value }),
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`❌ Failed to update ${config.key}:`, errorText);
+          throw new Error(`Failed to update ${config.key}: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Updated ${config.key}:`, result.message);
+        return result;
       });
+
+      const results = await Promise.all(updatePromises);
+      console.log('✅ All settings updated successfully');
       
-      if (!response.ok) {
-        throw new Error("Failed to update settings");
-      }
-      
-      return response.json();
+      return { message: "Settings updated successfully" };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      // Invalidate both settings and dashboard cache
+      queryClient.invalidateQueries({ queryKey: ["/api/system/configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({
         title: "Success",
         description: "Settings updated successfully",
@@ -64,17 +111,17 @@ export default function Settings() {
   useEffect(() => {
     if (settings) {
       setFormData({
-        workStartTime: settings.workStartTime || "08:00",
-        workEndTime: settings.workEndTime || "17:00",
-        lunchStartTime: settings.lunchStartTime || "12:00",
-        lunchEndTime: settings.lunchEndTime || "13:00",
-        gracePeriodMinutes: settings.gracePeriodMinutes || 5,
-        maxLatePeriodMinutes: settings.maxLatePeriodMinutes || 60,
-        recognitionThreshold: settings.recognitionThreshold || "0.85",
-        minTrainingImages: settings.minTrainingImages || 2,
-        emailNotifications: settings.emailNotifications ?? true,
-        dailyReports: settings.dailyReports ?? true,
-        weeklyReports: settings.weeklyReports ?? false,
+        workStartTime: settings.work_start_time?.value?.slice(0, 5) || "09:00",
+        workEndTime: settings.work_end_time?.value?.slice(0, 5) || "17:00",
+        lunchStartTime: settings.lunch_start_time?.value?.slice(0, 5) || "12:00",
+        lunchEndTime: settings.lunch_end_time?.value?.slice(0, 5) || "13:00",
+        gracePeriodMinutes: parseInt(settings.grace_period_minutes?.value) || 5,
+        maxLatePeriodMinutes: parseInt(settings.max_late_period_minutes?.value) || 60,
+        recognitionThreshold: settings.recognition_threshold?.value || "0.85",
+        minTrainingImages: parseInt(settings.min_training_images?.value) || 2,
+        emailNotifications: settings.email_notifications?.value === "true",
+        dailyReports: settings.daily_reports?.value === "true",
+        weeklyReports: settings.weekly_reports?.value === "true",
       });
     }
   }, [settings]);

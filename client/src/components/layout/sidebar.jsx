@@ -21,7 +21,8 @@ export default function Sidebar() {
         { name: "Attendance", path: "/attendance", icon: "fas fa-clock" },
         { name: "Reports", path: "/reports", icon: "fas fa-chart-bar" },
       ]
-    },
+    }
+    ,
     {
       section: "SETTINGS",
       items: [

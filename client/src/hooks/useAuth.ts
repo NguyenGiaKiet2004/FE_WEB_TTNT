@@ -1,57 +1,95 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import type { User, LoginRequest } from "@shared/schema";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '../lib/queryClient';
 
-interface AuthResponse {
-  authenticated: boolean;
-  user?: User;
-  message?: string;
+// Types
+interface User {
+  userId: number;
+  fullName: string;
+  email: string;
+  role: 'super_admin' | 'hr_manager' | 'employee';
+  departmentId: number | null;
+  phoneNumber: string | null;
+  createdAt: string;
 }
 
-export function useAuth() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["/api/auth/me"],
+interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+interface RegisterRequest {
+  fullName: string;
+  email: string;
+  password: string;
+  departmentId?: number;
+  phoneNumber?: string;
+  role?: 'super_admin' | 'hr_manager' | 'employee';
+}
+
+// Authentication hook
+export const useAuth = () => {
+  return useQuery({
+    queryKey: ['/api/auth/me'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/auth/me');
+      return response;
+    },
     retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
+};
 
-  const authData = data as AuthResponse | undefined;
-
+// Extract authentication state
+export const useAuthState = () => {
+  const { data, isLoading, error } = useAuth();
+  
   return {
-    user: authData?.user,
+    isAuthenticated: data?.authenticated || false,
+    user: data?.user || null,
     isLoading,
-    isAuthenticated: authData?.authenticated || false,
+    error,
+    role: data?.user?.role || null,
+    departmentId: data?.user?.departmentId || null
   };
-}
+};
 
-export function useLogin() {
+// Login hook
+export const useLogin = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (credentials: LoginRequest): Promise<AuthResponse> => {
-      const response = await apiRequest("POST", "/api/auth/login", credentials);
-      return await response.json();
+    mutationFn: async (credentials: LoginRequest) => {
+      const response = await apiRequest('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(credentials),
+      });
+      return response;
     },
     onSuccess: (data) => {
+      // Set auth data immediately after successful login
       if (data.authenticated) {
-        // Invalidate auth query to refresh user data
-        queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+        queryClient.setQueryData(['/api/auth/me'], data);
       }
+      // Also invalidate to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
     },
   });
-}
+};
 
-export function useLogout() {
+// Logout hook
+export const useLogout = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (): Promise<AuthResponse> => {
-      const response = await apiRequest("POST", "/api/auth/logout");
-      return await response.json();
+    mutationFn: async () => {
+      const response = await apiRequest('/api/auth/logout', {
+        method: 'POST',
+      });
+      return response;
     },
     onSuccess: () => {
-      // Clear all queries and redirect
-      queryClient.clear();
-      window.location.href = "/login";
+      // Clear auth data
+      queryClient.setQueryData(['/api/auth/me'], { authenticated: false, user: null });
     },
   });
-}
+};

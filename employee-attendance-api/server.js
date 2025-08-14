@@ -1,8 +1,8 @@
-// server.js
 const express = require('express');
 const pool = require('./src/utils/db');
 require('dotenv').config();
 const authRoutes = require('./src/routes/authRoutes');
+const userRoutes = require('./src/routes/userRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 
 async function testDbConnection() {
   try {

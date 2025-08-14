@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
+import { apiRequest } from "@/lib/api-config";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,28 +28,58 @@ export default function Settings() {
   const { data: settings, isLoading } = useQuery({
     queryKey: ["/api/system/configs"],
     queryFn: async () => {
-      const response = await fetch("http://localhost:3001/api/system/configs", {
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Failed to fetch settings");
-      }
-      return response.json();
+      console.log('🔄 Fetching settings from API...');
+      const response = await apiRequest('/system/configs');
+      console.log('🔄 API Response:', response);
+      return response;
     },
-    // Don't cache for too long
-    staleTime: 5000,
+    // Cache for longer to prevent unnecessary refetches
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Separate query for fresh data after updates
+  const { refetch: refetchFreshSettings } = useQuery({
+    queryKey: ["/api/system/configs", "fresh"],
+    queryFn: async () => {
+      console.log('🔄 Fetching fresh settings from API...');
+      const response = await apiRequest('/system/configs?fresh=true');
+      console.log('🔄 Fresh API Response:', response);
+      return response;
+    },
+    enabled: false, // Don't run automatically
   });
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (settingsData) => {
       console.log('🔄 Updating settings:', settingsData);
       
+      // Helper function to add minutes to time string (HH:MM)
+      const addMinutesToTime = (timeStr, minutes) => {
+        const [hours, mins] = timeStr.split(':').map(Number);
+        const totalMinutes = hours * 60 + mins + minutes;
+        const newHours = Math.floor(totalMinutes / 60);
+        const newMins = totalMinutes % 60;
+        return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+      };
+
+      // Helper function to subtract minutes from time string (HH:MM)
+      const subtractMinutesFromTime = (timeStr, minutes) => {
+        const [hours, mins] = timeStr.split(':').map(Number);
+        const totalMinutes = hours * 60 + mins - minutes;
+        const newHours = Math.floor(totalMinutes / 60);
+        const newMins = totalMinutes % 60;
+        return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+      };
+
       // Convert form data to system config format
       const configUpdates = [
         { key: 'work_start_time', value: settingsData.workStartTime + ':00' },
         { key: 'work_end_time', value: settingsData.workEndTime + ':00' },
-        { key: 'late_threshold', value: settingsData.workStartTime + ':00' },
-        { key: 'early_departure_threshold', value: settingsData.workEndTime + ':00' },
+        { key: 'lunch_start_time', value: settingsData.lunchStartTime + ':00' },
+        { key: 'lunch_end_time', value: settingsData.lunchEndTime + ':00' },
+        { key: 'late_threshold', value: addMinutesToTime(settingsData.workStartTime, settingsData.gracePeriodMinutes) + ':00' },
+        { key: 'early_departure_threshold', value: subtractMinutesFromTime(settingsData.workEndTime, settingsData.gracePeriodMinutes) + ':00' },
         { key: 'grace_period_minutes', value: settingsData.gracePeriodMinutes.toString() },
         { key: 'max_late_period_minutes', value: settingsData.maxLatePeriodMinutes.toString() },
         { key: 'recognition_threshold', value: settingsData.recognitionThreshold },
@@ -59,27 +90,22 @@ export default function Settings() {
       ];
 
       console.log('📝 Config updates to send:', configUpdates);
+      
+      // Log grouped by sections for clarity
+      console.log('📋 Working Hours:', configUpdates.filter(c => ['work_start_time', 'work_end_time', 'lunch_start_time', 'lunch_end_time'].includes(c.key)));
+      console.log('📋 Late Arrival:', configUpdates.filter(c => ['late_threshold', 'early_departure_threshold', 'grace_period_minutes', 'max_late_period_minutes'].includes(c.key)));
+      console.log('📋 Face Recognition:', configUpdates.filter(c => ['recognition_threshold', 'min_training_images'].includes(c.key)));
+      console.log('📋 Notifications:', configUpdates.filter(c => ['email_notifications', 'daily_reports', 'weekly_reports'].includes(c.key)));
 
       // Update each configuration
       const updatePromises = configUpdates.map(async (config) => {
         console.log(`🔄 Updating ${config.key} = ${config.value}`);
         
-        const response = await fetch(`http://localhost:3001/api/system/configs/${config.key}`, {
+        const result = await apiRequest(`/system/configs/${config.key}`, {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
           body: JSON.stringify({ value: config.value }),
         });
         
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`❌ Failed to update ${config.key}:`, errorText);
-          throw new Error(`Failed to update ${config.key}: ${errorText}`);
-        }
-        
-        const result = await response.json();
         console.log(`✅ Updated ${config.key}:`, result.message);
         return result;
       });
@@ -89,10 +115,19 @@ export default function Settings() {
       
       return { message: "Settings updated successfully" };
     },
-    onSuccess: () => {
-      // Invalidate both settings and dashboard cache
+    onSuccess: async (data) => {
+      // Invalidate all related queries
       queryClient.invalidateQueries({ queryKey: ["/api/system/configs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      
+      // Get fresh data from server (bypass cache)
+      const freshData = await refetchFreshSettings();
+      
+      // Update the main query with fresh data
+      if (freshData.data) {
+        queryClient.setQueryData(["/api/system/configs"], freshData.data);
+      }
+      
       toast({
         title: "Success",
         description: "Settings updated successfully",
@@ -109,22 +144,102 @@ export default function Settings() {
 
   // Load settings when data is available
   useEffect(() => {
-    if (settings) {
-      setFormData({
-        workStartTime: settings.work_start_time?.value?.slice(0, 5) || "09:00",
-        workEndTime: settings.work_end_time?.value?.slice(0, 5) || "17:00",
-        lunchStartTime: settings.lunch_start_time?.value?.slice(0, 5) || "12:00",
-        lunchEndTime: settings.lunch_end_time?.value?.slice(0, 5) || "13:00",
-        gracePeriodMinutes: parseInt(settings.grace_period_minutes?.value) || 5,
-        maxLatePeriodMinutes: parseInt(settings.max_late_period_minutes?.value) || 60,
-        recognitionThreshold: settings.recognition_threshold?.value || "0.85",
-        minTrainingImages: parseInt(settings.min_training_images?.value) || 2,
-        emailNotifications: settings.email_notifications?.value === "true",
-        dailyReports: settings.daily_reports?.value === "true",
-        weeklyReports: settings.weekly_reports?.value === "true",
+    console.log('🔄 useEffect triggered, settings:', settings);
+    if (settings?.configs) {
+      const configs = settings.configs;
+      console.log('🔄 Loading settings from server:', configs);
+      console.log('🔄 Working Hours:', {
+        work_start_time: configs.work_start_time?.value,
+        work_end_time: configs.work_end_time?.value,
+        lunch_start_time: configs.lunch_start_time?.value,
+        lunch_end_time: configs.lunch_end_time?.value
       });
+      console.log('🔄 Late Arrival:', {
+        grace_period_minutes: configs.grace_period_minutes?.value,
+        max_late_period_minutes: configs.max_late_period_minutes?.value
+      });
+      console.log('🔄 Face Recognition:', {
+        recognition_threshold: configs.recognition_threshold?.value,
+        min_training_images: configs.min_training_images?.value
+      });
+      console.log('🔄 Notifications:', {
+        email_notifications: configs.email_notifications?.value,
+        daily_reports: configs.daily_reports?.value,
+        weekly_reports: configs.weekly_reports?.value
+      });
+      
+      const newFormData = {
+        workStartTime: (() => {
+          const time = configs.work_start_time?.value?.slice(0, 5);
+          console.log('🔄 Parsing workStartTime:', configs.work_start_time?.value, '->', time);
+          return time || "09:00";
+        })(),
+        workEndTime: (() => {
+          const time = configs.work_end_time?.value?.slice(0, 5);
+          console.log('🔄 Parsing workEndTime:', configs.work_end_time?.value, '->', time);
+          return time || "17:00";
+        })(),
+        lunchStartTime: (() => {
+          const time = configs.lunch_start_time?.value?.slice(0, 5);
+          console.log('🔄 Parsing lunchStartTime:', configs.lunch_start_time?.value, '->', time);
+          return time || "12:00";
+        })(),
+        lunchEndTime: (() => {
+          const time = configs.lunch_end_time?.value?.slice(0, 5);
+          console.log('🔄 Parsing lunchEndTime:', configs.lunch_end_time?.value, '->', time);
+          return time || "13:00";
+        })(),
+        gracePeriodMinutes: (() => {
+          const parsed = parseInt(configs.grace_period_minutes?.value);
+          return isNaN(parsed) ? 5 : parsed;
+        })(),
+        maxLatePeriodMinutes: (() => {
+          const parsed = parseInt(configs.max_late_period_minutes?.value);
+          return isNaN(parsed) ? 60 : parsed;
+        })(),
+        recognitionThreshold: configs.recognition_threshold?.value || "0.85",
+        minTrainingImages: (() => {
+          const parsed = parseInt(configs.min_training_images?.value);
+          return isNaN(parsed) ? 2 : parsed;
+        })(),
+        emailNotifications: configs.email_notifications?.value === "true",
+        dailyReports: configs.daily_reports?.value === "true",
+        weeklyReports: configs.weekly_reports?.value === "true",
+      };
+      
+      console.log('🔄 Setting form data:', newFormData);
+      
+      // Check for NaN values
+      Object.entries(newFormData).forEach(([key, value]) => {
+        if (typeof value === 'number' && isNaN(value)) {
+          console.warn(`⚠️ NaN detected in ${key}:`, value);
+        }
+      });
+      
+      setFormData(newFormData);
+    } else {
+      console.log('🔄 No settings configs found');
     }
   }, [settings]);
+
+  // Helper functions for time calculations
+  const addMinutesToTime = (timeStr, minutes) => {
+    if (!timeStr || !minutes) return timeStr;
+    const [hours, mins] = timeStr.split(':').map(Number);
+    const totalMinutes = hours * 60 + mins + minutes;
+    const newHours = Math.floor(totalMinutes / 60);
+    const newMins = totalMinutes % 60;
+    return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+  };
+
+  const subtractMinutesFromTime = (timeStr, minutes) => {
+    if (!timeStr || !minutes) return timeStr;
+    const [hours, mins] = timeStr.split(':').map(Number);
+    const totalMinutes = hours * 60 + mins - minutes;
+    const newHours = Math.floor(totalMinutes / 60);
+    const newMins = totalMinutes % 60;
+    return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+  };
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -247,6 +362,7 @@ export default function Settings() {
                 <p className="text-sm text-gray-500 mt-1">
                   Employees arriving within this period won't be marked as late
                 </p>
+
               </div>
               <div>
                 <Label htmlFor="maxLatePeriod">Maximum Late Time (minutes)</Label>
@@ -261,6 +377,7 @@ export default function Settings() {
                 <p className="text-sm text-gray-500 mt-1">
                   After this time, employee will be marked as absent
                 </p>
+
               </div>
             </div>
           </div>
@@ -270,7 +387,7 @@ export default function Settings() {
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Face Recognition Configuration</h3>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="recognitionThreshold">Recognition Confidence Threshold</Label>
+                <Label>Recognition Confidence Threshold</Label>
                 <div className="mt-2">
                   <Slider
                     value={[recognitionThresholdValue]}

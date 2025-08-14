@@ -24,8 +24,13 @@ export const apiRequest = async (url: string, options: RequestInit = {}) => {
 
   const data = await response.json();
 
+  // Handle 401 (Unauthorized) gracefully - this is expected when not logged in
+  if (response.status === 401) {
+    return { authenticated: false, user: null };
+  }
+
   if (!response.ok) {
-    // Throw error with response data for better error handling
+    // Throw error with response data for better error handling (except 401)
     const error = new Error(data.message || `HTTP error! status: ${response.status}`) as ApiError;
     error.status = response.status;
     error.data = data;

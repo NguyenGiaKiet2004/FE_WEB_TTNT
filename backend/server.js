@@ -1,8 +1,7 @@
 const express = require('express');
 const mysql = require('mysql2/promise');
 const session = require('express-session');
-const { loginUser, registerUser } = require('./auth');
-const { getSystemConfig } = require('./system-config');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const PORT = 3001;
@@ -31,9 +30,11 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: false, // Set to true in production with HTTPS
+    secure: false,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax'
   },
+  name: 'smart-attendance-session'
 }));
 
 // Database connection
@@ -63,101 +64,135 @@ async function initDatabase() {
   }
 }
 
-// Authentication middleware
-function requireAuth(req, res, next) {
-  if (req.session && req.session.userId) {
-    return next();
-  }
-  return res.status(401).json({ 
-    message: 'Authentication required',
-    authenticated: false 
-  });
-}
+// Import functions
+const { loginUser, registerUser } = require('./auth.js');
+const { getSystemConfig, clearSystemConfigCache, getAllSystemConfigs } = require('./system-config.js');
 
 // Routes
 
-// 1. Login endpoint
+// Auth routes
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    console.log('🔐 Login attempt:', { email, password: password ? '***' : 'undefined' });
-    
+
     if (!email || !password) {
-      console.log('❌ Missing email or password');
-      return res.status(400).json({
-        message: 'Email và mật khẩu không được để trống',
-        authenticated: false
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email và mật khẩu không được để trống' 
       });
     }
 
-    // Use authentication service
     const result = await loginUser(connection, email, password);
-    
-    if (!result.success) {
-      console.log('❌ Login failed:', result.message);
-      return res.status(401).json({
-        message: result.message,
-        authenticated: false
+
+    if (result.success) {
+      // Set session
+      req.session.userId = result.user.userId;
+      req.session.user = result.user;
+      
+      console.log('🔐 Login successful - Session data:', {
+        sessionId: req.sessionID,
+        userId: req.session.userId,
+        user: req.session.user
+      });
+      
+      res.json({
+        success: true,
+        message: 'Đăng nhập thành công',
+        user: result.user
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        message: result.message
       });
     }
-
-    // Set session
-    req.session.userId = result.user.userId;
-    req.session.user = result.user;
-
-    console.log('✅ Login successful for user:', result.user.fullName);
-
-    res.json({
-      message: 'Đăng nhập thành công',
-      authenticated: true,
-      user: result.user
-    });
-
   } catch (error) {
-    console.error('❌ Login error:', error);
+    console.error('Login error:', error);
     res.status(500).json({
-      message: 'Lỗi server',
-      authenticated: false
+      success: false,
+      message: 'Lỗi server'
     });
   }
 });
 
-// 2. Logout endpoint
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy((err) => {
     if (err) {
-      return res.status(500).json({ message: 'Lỗi khi đăng xuất' });
+      console.error('Logout error:', err);
+      return res.status(500).json({
+        success: false,
+        message: 'Lỗi khi đăng xuất'
+      });
     }
-    res.clearCookie('connect.sid');
+    
+    res.clearCookie('smart-attendance-session');
     res.json({
-      message: 'Đăng xuất thành công',
-      authenticated: false
+      success: true,
+      message: 'Đăng xuất thành công'
     });
   });
 });
 
-// 3. Get current user endpoint
-app.get('/api/auth/me', (req, res) => {
-  if (req.session && req.session.user) {
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    console.log('🔍 GetCurrentUser called - Session data:', {
+      sessionId: req.sessionID,
+      userId: req.session.userId,
+      session: req.session
+    });
+    
+    if (!req.session.userId) {
+      console.log('❌ No userId in session, returning 401');
+      return res.status(401).json({
+        success: false,
+        message: 'Chưa đăng nhập'
+      });
+    }
+
+    const [users] = await connection.execute(`
+      SELECT u.*, d.department_name
+      FROM Users u
+      LEFT JOIN Departments d ON u.department_id = d.department_id
+      WHERE u.user_id = ?
+    `, [req.session.userId]);
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Người dùng không tồn tại'
+      });
+    }
+
+    const user = users[0];
+    const { password_hash, ...userData } = user;
+
+    console.log('✅ User found, returning user data');
     res.json({
       authenticated: true,
-      user: req.session.user
+      user: {
+        userId: userData.user_id,
+        fullName: userData.full_name,
+        email: userData.email,
+        role: userData.role,
+        departmentId: userData.department_id,
+        departmentName: userData.department_name,
+        phoneNumber: userData.phone_number,
+        createdAt: userData.created_at
+      }
     });
-  } else {
-    res.json({
-      authenticated: false,
-      user: null
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server'
     });
   }
 });
 
-// 4. Register endpoint
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { fullName, email, password, departmentId, phoneNumber, role = 'employee' } = req.body;
+    const { fullName, email, password, departmentId, phoneNumber, role } = req.body;
 
-    // Use authentication service
     const result = await registerUser(connection, {
       fullName,
       email,
@@ -167,302 +202,367 @@ app.post('/api/auth/register', async (req, res) => {
       role
     });
 
-    if (!result.success) {
-      return res.status(400).json({
+    if (result.success) {
+      res.json({
+        success: true,
+        message: result.message,
+        userId: result.userId
+      });
+    } else {
+      res.status(400).json({
+        success: false,
         message: result.message
       });
     }
-
-    res.status(201).json({
-      message: result.message,
-      userId: result.userId
-    });
-
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({
+      success: false,
       message: 'Lỗi server'
     });
   }
 });
 
-// 5. Get departments endpoint (public for registration)
-app.get('/api/departments', async (req, res) => {
-  try {
-    const [departments] = await connection.execute(
-      'SELECT department_id, department_name FROM Departments ORDER BY department_name'
-    );
-    res.json(departments);
-  } catch (error) {
-    console.error('Get departments error:', error);
-    res.status(500).json({ message: 'Lỗi khi lấy danh sách phòng ban' });
-  }
-});
-
-// 6. Dashboard stats endpoint
+// Dashboard routes
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
+    console.log('📊 Dashboard stats requested');
     
-    // Get today's and yesterday's dates
+    // Get all system configs (not just one key)
+    const systemConfigs = await getAllSystemConfigs();
+    console.log('⚙️ System configs loaded:', systemConfigs);
+    
+    // Extract specific config values with defaults
+    const workStartTime = systemConfigs.work_start_time?.value || '09:00:00';
+    const workEndTime = systemConfigs.work_end_time?.value || '17:00:00';
+    
+    console.log('⏰ Time configs:', { workStartTime, workEndTime });
+    
+    // Get today's date
     const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    console.log('📅 Dates:', { today, yesterday });
     
-    // Get total employees (excluding super_admin)
+    // Get total employees
     const [totalEmployeesResult] = await connection.execute('SELECT COUNT(*) as count FROM Users WHERE role != "super_admin"');
     const totalEmployees = totalEmployeesResult[0].count;
+    console.log('👥 Total employees:', totalEmployees);
     
-    // Get total employees yesterday (for comparison)
-    // Note: This is simplified. In a real system, you'd track user creation dates
-    const [totalEmployeesYesterdayResult] = await connection.execute(
-      'SELECT COUNT(*) as count FROM Users WHERE role != "super_admin"'
-    );
-    const totalEmployeesYesterday = totalEmployeesYesterdayResult[0].count;
-    const employeesAdded = totalEmployees - totalEmployeesYesterday;
+    // Get yesterday's total employees for comparison
+    const [yesterdayEmployeesResult] = await connection.execute('SELECT COUNT(*) as count FROM Users WHERE role != "super_admin"');
+    const yesterdayEmployees = yesterdayEmployeesResult[0].count;
     
-    // Get today's attendance records for processing
-    const [attendanceRecordsToday] = await connection.execute(`
+    // Get today's attendance data with proper time comparison
+    const [todayAttendance] = await connection.execute(`
       SELECT 
-        TIME(check_in_time) as check_in_time,
-        TIME(check_out_time) as check_out_time
+        COUNT(*) as total_records,
+        SUM(CASE WHEN TIME(check_in_time) <= ? THEN 1 ELSE 0 END) as on_time,
+        SUM(CASE WHEN TIME(check_in_time) > ? THEN 1 ELSE 0 END) as late_arrival,
+        SUM(CASE WHEN check_out_time IS NULL THEN 1 ELSE 0 END) as absent,
+        SUM(CASE WHEN check_out_time IS NOT NULL AND TIME(check_out_time) < ? THEN 1 ELSE 0 END) as early_departure
       FROM AttendanceRecords 
-      WHERE record_date = ?
-    `, [today]);
+      WHERE DATE(check_in_time) = ?
+    `, [
+      workStartTime,
+      workStartTime,
+      workEndTime,
+      today
+    ]);
+    console.log('📈 Today attendance:', todayAttendance[0]);
     
-    // Get system configurations for time thresholds
-    const lateThreshold = await getSystemConfig('late_threshold', '09:00:00');
-    const earlyDepartureThreshold = await getSystemConfig('early_departure_threshold', '17:00:00');
+    // Get yesterday's attendance data for comparison
+    const [yesterdayAttendance] = await connection.execute(`
+      SELECT 
+        COUNT(*) as total_records,
+        SUM(CASE WHEN TIME(check_in_time) <= ? THEN 1 ELSE 0 END) as on_time,
+        SUM(CASE WHEN TIME(check_in_time) > ? THEN 1 ELSE 0 END) as late_arrival,
+        SUM(CASE WHEN check_out_time IS NULL THEN 1 ELSE 0 END) as absent,
+        SUM(CASE WHEN check_out_time IS NOT NULL AND TIME(check_out_time) < ? THEN 1 ELSE 0 END) as early_departure
+      FROM AttendanceRecords 
+      WHERE DATE(check_in_time) = ?
+    `, [
+      workStartTime,
+      workStartTime,
+      workEndTime,
+      yesterday
+    ]);
+    console.log('📈 Yesterday attendance:', yesterdayAttendance[0]);
     
-    // Process attendance logic in Node.js
-    let onTime = 0;
-    let late = 0;
-    let earlyDeparture = 0;
-    
-    attendanceRecordsToday.forEach(record => {
-      const checkInTime = record.check_in_time;
-      const checkOutTime = record.check_out_time;
-      
-      // On Time: Check-in <= late_threshold
-      if (checkInTime <= lateThreshold) {
-        onTime++;
-      } else {
-        // Late: Check-in > late_threshold
-        late++;
-      }
-      
-      // Early Departure: Has check-out AND check-out < early_departure_threshold
-      if (checkOutTime && checkOutTime < earlyDepartureThreshold) {
-        earlyDeparture++;
-      }
-    });
-    
-    const todayStats = { on_time: onTime, late, early_departure: earlyDeparture };
-    
-    // Calculate absent (employees who didn't check in today)
-    const [absentCount] = await connection.execute(`
-      SELECT COUNT(*) as absent_count
-      FROM Users u
+    // Calculate time-off (employees not present today)
+    const [timeOffResult] = await connection.execute(`
+      SELECT COUNT(*) as count 
+      FROM Users u 
       WHERE u.role != 'super_admin' 
       AND u.user_id NOT IN (
         SELECT DISTINCT user_id 
         FROM AttendanceRecords 
-        WHERE record_date = ?
+        WHERE DATE(check_in_time) = ?
       )
     `, [today]);
     
-    const absent = absentCount[0].absent_count;
+    const timeOff = timeOffResult[0].count;
+    console.log('🏖️ Time off:', timeOff);
     
-    // Get yesterday's attendance records for processing
-    const [attendanceRecordsYesterday] = await connection.execute(`
-      SELECT 
-        TIME(check_in_time) as check_in_time,
-        TIME(check_out_time) as check_out_time
-      FROM AttendanceRecords 
-      WHERE record_date = ?
-    `, [yesterdayStr]);
-    
-    // Process yesterday's attendance logic in Node.js
-    let onTimeYesterday = 0;
-    let lateYesterday = 0;
-    let earlyDepartureYesterday = 0;
-    
-    attendanceRecordsYesterday.forEach(record => {
-      const checkInTime = record.check_in_time;
-      const checkOutTime = record.check_out_time;
-      
-      // On Time: Check-in <= late_threshold
-      if (checkInTime <= lateThreshold) {
-        onTimeYesterday++;
-      } else {
-        // Late: Check-in > late_threshold
-        lateYesterday++;
-      }
-      
-      // Early Departure: Has check-out AND check-out < early_departure_threshold
-      if (checkOutTime && checkOutTime < earlyDepartureThreshold) {
-        earlyDepartureYesterday++;
-      }
-    });
-    
-    const yesterdayStats = { 
-      on_time: onTimeYesterday, 
-      late: lateYesterday, 
-      early_departure: earlyDepartureYesterday 
-    };
-    
-    // Calculate absent for yesterday
-    const [absentCountYesterday] = await connection.execute(`
-      SELECT COUNT(*) as absent_count
-      FROM Users u
+    // Calculate yesterday's time-off
+    const [yesterdayTimeOffResult] = await connection.execute(`
+      SELECT COUNT(*) as count 
+      FROM Users u 
       WHERE u.role != 'super_admin' 
       AND u.user_id NOT IN (
         SELECT DISTINCT user_id 
         FROM AttendanceRecords 
-        WHERE record_date = ?
+        WHERE DATE(check_in_time) = ?
       )
-    `, [yesterdayStr]);
+    `, [yesterday]);
     
-    const absentYesterday = absentCountYesterday[0].absent_count;
+    const yesterdayTimeOff = yesterdayTimeOffResult[0].count;
     
     // Calculate percentage changes
-    const calculatePercentageChange = (current, previous) => {
-      if (previous === 0) {
-        return current > 0 ? 100 : 0; // If previous was 0 and current is > 0, it's a 100% increase
+    const onTimeChange = yesterdayAttendance[0].on_time > 0 
+      ? ((todayAttendance[0].on_time - yesterdayAttendance[0].on_time) / yesterdayAttendance[0].on_time * 100).toFixed(1)
+      : 0;
+    
+    const lateArrivalChange = yesterdayAttendance[0].late_arrival > 0 
+      ? ((todayAttendance[0].late_arrival - yesterdayAttendance[0].late_arrival) / yesterdayAttendance[0].late_arrival * 100).toFixed(1)
+      : 0;
+    
+    const absentChange = yesterdayAttendance[0].absent > 0 
+      ? ((todayAttendance[0].absent - yesterdayAttendance[0].absent) / yesterdayAttendance[0].absent * 100).toFixed(1)
+      : 0;
+    
+    const earlyDepartureChange = yesterdayAttendance[0].early_departure > 0 
+      ? ((todayAttendance[0].early_departure - yesterdayAttendance[0].early_departure) / yesterdayAttendance[0].early_departure * 100).toFixed(1)
+      : 0;
+    
+    const timeOffChange = yesterdayTimeOff > 0 
+      ? ((timeOff - yesterdayTimeOff) / yesterdayTimeOff * 100).toFixed(1)
+      : 0;
+    
+    const response = {
+      success: true,
+      stats: {
+        totalEmployees: {
+          value: totalEmployees,
+          change: totalEmployees - yesterdayEmployees,
+          changeType: totalEmployees > yesterdayEmployees ? 'increase' : 'decrease'
+        },
+        onTime: {
+          value: todayAttendance[0].on_time || 0,
+          change: parseFloat(onTimeChange),
+          changeType: parseFloat(onTimeChange) > 0 ? 'increase' : 'decrease'
+        },
+        lateArrival: {
+          value: todayAttendance[0].late_arrival || 0,
+          change: parseFloat(lateArrivalChange),
+          changeType: parseFloat(lateArrivalChange) > 0 ? 'increase' : 'decrease'
+        },
+        absent: {
+          value: todayAttendance[0].absent || 0,
+          change: parseFloat(absentChange),
+          changeType: parseFloat(absentChange) > 0 ? 'increase' : 'decrease'
+        },
+        earlyDeparture: {
+          value: todayAttendance[0].early_departure || 0,
+          change: parseFloat(earlyDepartureChange),
+          changeType: parseFloat(earlyDepartureChange) > 0 ? 'increase' : 'decrease'
+        },
+        timeOff: {
+          value: timeOff,
+          change: parseFloat(timeOffChange),
+          changeType: parseFloat(timeOffChange) > 0 ? 'increase' : 'decrease'
+        }
       }
-      return ((current - previous) / previous) * 100;
     };
     
-    const onTimeChange = calculatePercentageChange(todayStats.on_time || 0, yesterdayStats.on_time || 0);
-    const lateChange = calculatePercentageChange(todayStats.late || 0, yesterdayStats.late || 0);
-    const absentChange = calculatePercentageChange(absent, absentYesterday);
-    const earlyDepartureChange = calculatePercentageChange(todayStats.early_departure || 0, yesterdayStats.early_departure || 0);
-    
-    // Placeholder for time-off (needs actual logic if time-off records are tracked)
-    const timeOff = 0;
-    const timeOffChange = 0;
-    
-    const stats = {
-      totalEmployees: totalEmployees,
-      employeesAdded: employeesAdded, // New: for Total Employees description
-      onTime: todayStats.on_time || 0,
-      onTimeChange: onTimeChange, // New: for On Time description
-      lateArrival: todayStats.late || 0,
-      lateArrivalChange: lateChange, // New: for Late Arrival description
-      absent: absent,
-      absentChange: absentChange, // New: for Absent description
-      earlyDeparture: todayStats.early_departure || 0,
-      earlyDepartureChange: earlyDepartureChange, // New: for Early Departure description
-      timeOff: timeOff,
-      timeOffChange: timeOffChange // New: for Time-off description
-    };
-    
-    await connection.end();
-    res.json(stats);
+    console.log('✅ Dashboard stats response:', response);
+    res.json(response);
   } catch (error) {
-    console.error('Dashboard stats error:', error);
-    res.status(500).json({ message: 'Lỗi khi lấy thống kê dashboard' });
+    console.error('❌ Dashboard stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server',
+      error: error.message
+    });
   }
 });
 
-// 7. Get employees endpoint
+app.get('/api/departments', async (req, res) => {
+  try {
+    const [departments] = await connection.execute('SELECT * FROM Departments ORDER BY department_name');
+    res.json({ success: true, departments });
+  } catch (error) {
+    console.error('Get departments error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+});
+
 app.get('/api/employees', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
     const [employees] = await connection.execute(`
-      SELECT 
-        u.user_id as id,
-        u.full_name as fullName,
-        u.email,
-        u.role,
-        u.phone_number as phoneNumber,
-        d.department_name as department
-      FROM Users u
-      LEFT JOIN Departments d ON u.department_id = d.department_id
+      SELECT u.*, d.department_name 
+      FROM Users u 
+      LEFT JOIN Departments d ON u.department_id = d.department_id 
       WHERE u.role != 'super_admin'
       ORDER BY u.full_name
     `);
-    
-    await connection.end();
-    res.json(employees);
+    res.json({ success: true, employees });
   } catch (error) {
     console.error('Get employees error:', error);
-    res.status(500).json({ message: 'Lỗi khi lấy danh sách nhân viên' });
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 });
 
-// 8. Get system configurations endpoint (for super_admin)
+app.get('/api/attendance', async (req, res) => {
+  try {
+    const [attendance] = await connection.execute(`
+      SELECT ar.*, u.full_name, d.department_name
+      FROM AttendanceRecords ar
+      JOIN Users u ON ar.user_id = u.user_id
+      LEFT JOIN Departments d ON u.department_id = d.department_id
+      ORDER BY ar.check_in_time DESC
+      LIMIT 10
+    `);
+    res.json({ success: true, attendance });
+  } catch (error) {
+    console.error('Get attendance error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+});
+
+// Settings routes
 app.get('/api/system/configs', async (req, res) => {
   try {
-    const { getAllSystemConfigs } = require('./system-config');
-    const configs = await getAllSystemConfigs();
-    res.json(configs);
+    console.log('📋 Fetching system configs...');
+    
+    // Use the shared connection instead of creating a new one
+    const [configs] = await connection.execute(
+      'SELECT config_key, config_value, description FROM SystemConfigs ORDER BY config_key'
+    );
+    
+    console.log('📋 Raw database result:', configs);
+    
+    const result = {};
+    configs.forEach(config => {
+      result[config.config_key] = {
+        value: config.config_value,
+        description: config.description
+      };
+    });
+    
+    console.log('📋 Processed configs:', result);
+    console.log('📋 Config keys:', Object.keys(result));
+    
+    res.json({ success: true, configs: result });
   } catch (error) {
     console.error('Get system configs error:', error);
-    res.status(500).json({ message: 'Lỗi khi lấy cấu hình hệ thống' });
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 });
 
-// 9. Update system configuration endpoint (for super_admin)
 app.put('/api/system/configs/:key', async (req, res) => {
   try {
     const { key } = req.params;
-    const { value, description } = req.body;
+    const { value } = req.body;
     
-    console.log('🔧 Updating system config:', { key, value, description });
+    console.log('🔧 Updating config:', { key, value });
     
-    if (!value) {
-      console.log('❌ Missing value for config update');
-      return res.status(400).json({ message: 'Giá trị cấu hình không được để trống' });
+    // Accept all config keys that frontend sends
+    const validKeys = [
+      'workStartTime', 'workEndTime', 'lateThreshold', 'earlyDepartureThreshold',
+      'gracePeriodMinutes', 'maxLatePeriodMinutes', 'recognitionThreshold', 
+      'minTrainingImages', 'emailNotifications', 'dailyReports', 'weeklyReports',
+      'work_start_time', 'work_end_time', 'lunch_start_time', 'lunch_end_time',
+      'late_threshold', 'early_departure_threshold', 'grace_period_minutes', 
+      'max_late_period_minutes', 'recognition_threshold', 'min_training_images', 
+      'email_notifications', 'daily_reports', 'weekly_reports'
+    ];
+    
+    console.log('🔍 Valid keys:', validKeys);
+    console.log('🔍 Checking if key is valid:', key, 'Result:', validKeys.includes(key));
+    console.log('🔍 Key type:', typeof key);
+    console.log('🔍 Value type:', typeof value);
+    
+    if (!validKeys.includes(key)) {
+      console.log('❌ Invalid config key:', key);
+      console.log('❌ Available valid keys:', validKeys);
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid configuration key: ${key}`,
+        validKeys: validKeys
+      });
     }
     
-    const { setSystemConfig } = require('./system-config');
-    const success = await setSystemConfig(key, value, description);
+    await connection.execute(
+      'UPDATE SystemConfigs SET config_value = ? WHERE config_key = ?',
+      [value, key]
+    );
     
-    if (success) {
-      // Clear system config cache to force refresh
-      const { clearSystemConfigCache } = require('./system-config');
-      clearSystemConfigCache();
-      
-      console.log('✅ Config updated successfully:', key, '=', value);
-      res.json({ message: 'Cập nhật cấu hình thành công' });
-    } else {
-      console.log('❌ Failed to update config:', key);
-      res.status(500).json({ message: 'Lỗi khi cập nhật cấu hình' });
-    }
+    console.log('✅ Config updated successfully:', key);
+    
+    // Verify the update by reading back from database
+    const [verifyRows] = await connection.execute(
+      'SELECT config_value FROM SystemConfigs WHERE config_key = ?',
+      [key]
+    );
+    console.log('🔍 Verification - Database value after update:', verifyRows[0]?.config_value);
+    
+    // Clear ALL system config cache to ensure fresh data
+    clearSystemConfigCache();
+    
+    // Also clear any other related caches
+    console.log('🗑️ Cache cleared for fresh data');
+    
+    res.json({ success: true, message: 'Cập nhật thành công' });
   } catch (error) {
-    console.error('Update system config error:', error);
-    res.status(500).json({ message: 'Lỗi khi cập nhật cấu hình hệ thống' });
+    console.error('❌ Update system config error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 });
 
-// 10. Get attendance records endpoint
-app.get('/api/attendance', async (req, res) => {
+// Test endpoint to check database directly
+app.get('/api/system/configs/test', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
-    const [records] = await connection.execute(`
-      SELECT 
-        ar.record_id as id,
-        ar.user_id as employeeId,
-        ar.check_in_time as checkIn,
-        ar.check_out_time as checkOut,
-        ar.status,
-        ar.record_date as recordDate,
-        u.full_name as employeeName,
-        d.department_name as department
-      FROM AttendanceRecords ar
-      LEFT JOIN Users u ON ar.user_id = u.user_id
-      LEFT JOIN Departments d ON u.department_id = d.department_id
-      ORDER BY ar.record_date DESC, ar.check_in_time DESC
-      LIMIT 50
-    `);
+    console.log('🧪 Testing database connection...');
     
-    await connection.end();
-    res.json(records);
+    const [configs] = await connection.execute(
+      'SELECT config_key, config_value FROM SystemConfigs ORDER BY config_key'
+    );
+    
+    console.log('🧪 Database test result:', configs);
+    
+    res.json({ 
+      success: true, 
+      message: 'Database test successful',
+      count: configs.length,
+      configs: configs
+    });
   } catch (error) {
-    console.error('Get attendance error:', error);
-    res.status(500).json({ message: 'Lỗi khi lấy dữ liệu chấm công' });
+    console.error('❌ Database test error:', error);
+    res.status(500).json({ success: false, message: 'Database test failed', error: error.message });
+  }
+});
+
+app.get('/api/system/configs/:key', async (req, res) => {
+  try {
+    const { key } = req.params;
+    
+    if (!['workStartTime', 'workEndTime', 'lateThreshold', 'earlyDepartureThreshold'].includes(key)) {
+      return res.status(400).json({ success: false, message: 'Invalid configuration key' });
+    }
+    
+    const [configs] = await connection.execute(
+      'SELECT config_value FROM SystemConfigs WHERE config_key = ?',
+      [key]
+    );
+    
+    if (configs.length === 0) {
+      return res.status(404).json({ success: false, message: 'Configuration not found' });
+    }
+    
+    res.json({ success: true, value: configs[0].config_value });
+  } catch (error) {
+    console.error('Get system config error:', error);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 });
 
@@ -479,6 +579,8 @@ async function startServer() {
     console.log(`   POST /api/auth/register - Đăng ký`);
     console.log(`   GET  /api/departments - Lấy danh sách phòng ban`);
     console.log(`   GET  /api/dashboard/stats - Thống kê dashboard`);
+    console.log(`   GET  /api/system/configs - Lấy cấu hình hệ thống`);
+    console.log(`   PUT  /api/system/configs/:key - Cập nhật cấu hình`);
   });
 }
 
@@ -492,3 +594,4 @@ process.on('SIGINT', async () => {
   }
   process.exit(0);
 });
+

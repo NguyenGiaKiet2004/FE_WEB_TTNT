@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Eye, EyeOff, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/api-config";
 
 export default function Register() {
   const [location, setLocation] = useLocation();
@@ -29,13 +29,16 @@ export default function Register() {
   const [errors, setErrors] = useState({});
 
   // Fetch departments from API
-  const { data: departments = [], isLoading: departmentsLoading, error: departmentsError } = useQuery({
+  const { data: departmentsResponse, isLoading: departmentsLoading, error: departmentsError } = useQuery({
     queryKey: ["/api/departments"],
     queryFn: async () => {
-      return await apiRequest('/api/departments');
+      return await apiRequest('/departments');
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
+
+  // Extract departments array from response
+  const departments = departmentsResponse?.departments || [];
 
   const handleChange = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -79,6 +82,15 @@ export default function Register() {
       newErrors.phoneNumber = 'Số điện thoại không hợp lệ';
     }
     
+    if (!form.role) {
+      newErrors.role = 'Vui lòng chọn vai trò';
+    }
+    
+    // Department is optional, but if selected, validate it exists
+    if (form.departmentId && !departments.find(dept => dept.department_id.toString() === form.departmentId)) {
+      newErrors.departmentId = 'Phòng ban không hợp lệ';
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -96,17 +108,17 @@ export default function Register() {
     }
 
     try {
-      const data = await apiRequest('/api/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({
-          fullName: form.fullName,
-          email: form.email,
-          password: form.password,
-          departmentId: form.departmentId ? parseInt(form.departmentId) : null,
-          phoneNumber: form.phoneNumber,
-          role: form.role
-        }),
-      });
+          const data = await apiRequest('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        fullName: form.fullName,
+        email: form.email,
+        password: form.password,
+        departmentId: form.departmentId ? parseInt(form.departmentId) : null,
+        phoneNumber: form.phoneNumber,
+        role: form.role
+      }),
+    });
 
       setSuccess("Đăng ký thành công! Vui lòng đăng nhập.");
       // Reset form
@@ -188,11 +200,14 @@ export default function Register() {
                 <div>
                   <Label htmlFor="fullName" className="text-lg text-white font-semibold">Họ và tên *</Label>
                   <Input 
-                    id="fullName" 
+                    id="fullName"
+                    name="fullName"
                     type="text" 
                     value={form.fullName} 
                     onChange={handleChange("fullName")} 
                     required 
+                    autoComplete="name"
+                    placeholder="Nhập họ và tên đầy đủ"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                       errors.fullName ? 'border-red-400' : ''
                     }`}
@@ -204,11 +219,14 @@ export default function Register() {
                 <div>
                   <Label htmlFor="email" className="text-lg text-white font-semibold">Email *</Label>
                   <Input 
-                    id="email" 
+                    id="email"
+                    name="email"
                     type="email" 
                     value={form.email} 
                     onChange={handleChange("email")} 
                     required 
+                    autoComplete="email"
+                    placeholder="Nhập địa chỉ email"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                       errors.email ? 'border-red-400' : ''
                     }`}
@@ -221,11 +239,14 @@ export default function Register() {
                   <Label htmlFor="password" className="text-lg text-white font-semibold">Mật khẩu *</Label>
                   <div className="relative">
                     <Input 
-                      id="password" 
+                      id="password"
+                      name="password"
                       type={showPassword ? "text" : "password"}
                       value={form.password} 
                       onChange={handleChange("password")} 
                       required 
+                      autoComplete="new-password"
+                      placeholder="Nhập mật khẩu mới"
                       className={`mt-2 text-lg px-5 py-4 pr-12 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                         errors.password ? 'border-red-400' : ''
                       }`}
@@ -246,11 +267,14 @@ export default function Register() {
                   <Label htmlFor="confirmPassword" className="text-lg text-white font-semibold">Xác nhận mật khẩu *</Label>
                   <div className="relative">
                     <Input 
-                      id="confirmPassword" 
+                      id="confirmPassword"
+                      name="confirmPassword"
                       type={showConfirmPassword ? "text" : "password"}
                       value={form.confirmPassword} 
                       onChange={handleChange("confirmPassword")} 
                       required 
+                      autoComplete="new-password"
+                      placeholder="Nhập lại mật khẩu để xác nhận"
                       className={`mt-2 text-lg px-5 py-4 pr-12 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                         errors.confirmPassword ? 'border-red-400' : ''
                       }`}
@@ -268,10 +292,10 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="department" className="text-lg text-white font-semibold">Phòng ban</Label>
+                  <Label htmlFor="departmentId" className="text-lg text-white font-semibold">Phòng ban <span className="text-gray-400">(Tùy chọn)</span></Label>
                   <Select value={form.departmentId} onValueChange={(value) => handleSelectChange("departmentId", value)}>
-                    <SelectTrigger className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
-                      <SelectValue placeholder={departmentsLoading ? "Đang tải..." : "Chọn phòng ban"} />
+                    <SelectTrigger id="departmentId" className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
+                      <SelectValue placeholder={departmentsLoading ? "Đang tải..." : "Chọn phòng ban (tùy chọn)"} />
                     </SelectTrigger>
                     <SelectContent>
                       {departmentsLoading ? (
@@ -283,7 +307,7 @@ export default function Register() {
                         <div className="p-4 text-center text-red-500">
                           Lỗi tải danh sách phòng ban
                         </div>
-                                             ) : (
+                                             ) : departments && departments.length > 0 ? (
                          departments
                            .filter(dept => dept && dept.department_id) // Filter out undefined/null items
                            .map(dept => (
@@ -291,17 +315,66 @@ export default function Register() {
                                {dept.department_name}
                              </SelectItem>
                            ))
+                       ) : (
+                         <>
+                           <SelectItem value="">
+                             <div className="flex items-center space-x-2">
+                               <i className="fas fa-times text-gray-400"></i>
+                               <span>Không có phòng ban</span>
+                             </div>
+                           </SelectItem>
+                           <div className="p-4 text-center text-gray-500">
+                             Không có phòng ban nào để chọn
+                           </div>
+                         </>
                        )}
                     </SelectContent>
                   </Select>
+                  {errors.departmentId && (
+                    <p className="text-red-300 text-sm mt-1">{errors.departmentId}</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor="role" className="text-lg text-white font-semibold">Vai trò *</Label>
+                  <Select value={form.role} onValueChange={(value) => handleSelectChange("role", value)}>
+                    <SelectTrigger id="role" className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
+                      <SelectValue placeholder="Chọn vai trò" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="super_admin">
+                        <div className="flex items-center space-x-2">
+                          <i className="fas fa-crown text-yellow-500"></i>
+                          <span>Super Admin</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="hr_manager">
+                        <div className="flex items-center space-x-2">
+                          <i className="fas fa-user-tie text-blue-500"></i>
+                          <span>HR Manager</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="employee">
+                        <div className="flex items-center space-x-2">
+                          <i className="fas fa-user text-green-500"></i>
+                          <span>Employee</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.role && (
+                    <p className="text-red-300 text-sm mt-1">{errors.role}</p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="phoneNumber" className="text-lg text-white font-semibold">Số điện thoại</Label>
                   <Input 
-                    id="phoneNumber" 
+                    id="phoneNumber"
+                    name="phoneNumber"
                     type="tel" 
                     value={form.phoneNumber} 
                     onChange={handleChange("phoneNumber")} 
+                    autoComplete="tel"
+                    placeholder="Nhập số điện thoại (VD: 0123456789)"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                       errors.phoneNumber ? 'border-red-400' : ''
                     }`}

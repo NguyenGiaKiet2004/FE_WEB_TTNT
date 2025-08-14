@@ -142,7 +142,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
               />
             </div>
             <div>
-              <Label htmlFor="department">Department *</Label>
+              <Label>Department *</Label>
               <Select value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Department" />
@@ -155,7 +155,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
               </Select>
             </div>
             <div>
-              <Label htmlFor="role">Role *</Label>
+              <Label>Role *</Label>
               <Select value={formData.roleId} onValueChange={(value) => handleInputChange("roleId", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Role" />

@@ -160,11 +160,13 @@ export default function Login() {
                   <Label htmlFor="email" className="text-lg text-white font-semibold">Email</Label>
                   <Input
                     id="email"
+                    name="email"
                     type="email"
                     value={credentials.email}
                     onChange={handleInputChange("email")}
                     placeholder="Nhập email của bạn"
                     required
+                    autoComplete="email"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                       errors.email ? 'border-red-400' : ''
                     }`}
@@ -179,11 +181,13 @@ export default function Login() {
                   <div className="relative">
                     <Input
                       id="password"
+                      name="password"
                       type={showPassword ? "text" : "password"}
                       value={credentials.password}
                       onChange={handleInputChange("password")}
                       placeholder="Nhập mật khẩu của bạn"
                       required
+                      autoComplete="current-password"
                       className={`mt-2 text-lg px-5 py-4 pr-12 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                         errors.password ? 'border-red-400' : ''
                       }`}

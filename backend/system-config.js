@@ -88,15 +88,28 @@ function clearSystemConfigCache() {
 
 /**
  * Get all system configurations
+ * @param {boolean} bypassCache - Whether to bypass cache and fetch fresh data
  * @returns {Promise<Object>} All configurations
  */
-async function getAllSystemConfigs() {
+async function getAllSystemConfigs(bypassCache = false) {
   try {
+    console.log('🔄 getAllSystemConfigs called, bypassCache:', bypassCache);
+    
+    // If bypassing cache, clear it first
+    if (bypassCache) {
+      clearSystemConfigCache();
+    }
+    
     const connection = await mysql.createConnection(dbConfig);
+    console.log('🔄 Database connection established');
+    
     const [configs] = await connection.execute(
-      'SELECT config_key, config_value, description FROM SystemConfigs'
+      'SELECT config_key, config_value, description FROM SystemConfigs ORDER BY config_key'
     );
+    console.log('🔄 Raw database result:', configs);
+    
     await connection.end();
+    console.log('🔄 Database connection closed');
 
     const result = {};
     configs.forEach(config => {
@@ -106,9 +119,11 @@ async function getAllSystemConfigs() {
       };
     });
 
+    console.log('📋 Processed configs:', result);
+    console.log('📋 Fetched configs keys:', Object.keys(result));
     return result;
   } catch (error) {
-    console.error('Error getting all system configs:', error);
+    console.error('❌ Error getting all system configs:', error);
     return {};
   }
 }

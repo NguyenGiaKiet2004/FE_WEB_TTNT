@@ -148,6 +148,22 @@ export default function Settings() {
     if (settings?.configs) {
       const configs = settings.configs;
       console.log('🔄 Loading settings from server:', configs);
+      
+      // Validate and sanitize config values
+      const sanitizeConfig = (configKey, defaultValue) => {
+        const config = configs[configKey];
+        if (!config || !config.value) return defaultValue;
+        
+        // Handle different data types
+        if (typeof defaultValue === 'number') {
+          const parsed = parseInt(config.value);
+          return isNaN(parsed) ? defaultValue : parsed;
+        }
+        if (typeof defaultValue === 'boolean') {
+          return config.value === 'true';
+        }
+        return config.value || defaultValue;
+      };
       console.log('🔄 Working Hours:', {
         work_start_time: configs.work_start_time?.value,
         work_end_time: configs.work_end_time?.value,
@@ -189,30 +205,25 @@ export default function Settings() {
           console.log('🔄 Parsing lunchEndTime:', configs.lunch_end_time?.value, '->', time);
           return time || "13:00";
         })(),
-        gracePeriodMinutes: (() => {
-          const parsed = parseInt(configs.grace_period_minutes?.value);
-          return isNaN(parsed) ? 5 : parsed;
-        })(),
-        maxLatePeriodMinutes: (() => {
-          const parsed = parseInt(configs.max_late_period_minutes?.value);
-          return isNaN(parsed) ? 60 : parsed;
-        })(),
-        recognitionThreshold: configs.recognition_threshold?.value || "0.85",
-        minTrainingImages: (() => {
-          const parsed = parseInt(configs.min_training_images?.value);
-          return isNaN(parsed) ? 2 : parsed;
-        })(),
-        emailNotifications: configs.email_notifications?.value === "true",
-        dailyReports: configs.daily_reports?.value === "true",
-        weeklyReports: configs.weekly_reports?.value === "true",
+        gracePeriodMinutes: sanitizeConfig('grace_period_minutes', 5),
+        maxLatePeriodMinutes: sanitizeConfig('max_late_period_minutes', 60),
+        recognitionThreshold: sanitizeConfig('recognition_threshold', "0.85"),
+        minTrainingImages: sanitizeConfig('min_training_images', 2),
+        emailNotifications: sanitizeConfig('email_notifications', true),
+        dailyReports: sanitizeConfig('daily_reports', true),
+        weeklyReports: sanitizeConfig('weekly_reports', false),
       };
       
       console.log('🔄 Setting form data:', newFormData);
       
-      // Check for NaN values
+      // Check for NaN values and fix them
       Object.entries(newFormData).forEach(([key, value]) => {
         if (typeof value === 'number' && isNaN(value)) {
           console.warn(`⚠️ NaN detected in ${key}:`, value);
+          // Fix NaN values with defaults
+          if (key === 'gracePeriodMinutes') newFormData[key] = 5;
+          else if (key === 'maxLatePeriodMinutes') newFormData[key] = 60;
+          else if (key === 'minTrainingImages') newFormData[key] = 2;
         }
       });
       
@@ -242,6 +253,14 @@ export default function Settings() {
   };
 
   const handleInputChange = (field, value) => {
+    // Validate numeric inputs to prevent NaN
+    if (['gracePeriodMinutes', 'maxLatePeriodMinutes', 'minTrainingImages'].includes(field)) {
+      if (value === '' || isNaN(value) || value < 0) {
+        console.warn(`⚠️ Invalid value for ${field}:`, value);
+        return; // Don't update if invalid
+      }
+    }
+    
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -267,7 +286,15 @@ export default function Settings() {
       dailyReports: true,
       weeklyReports: false,
     };
+    
+    console.log('🔄 Resetting form to defaults:', defaultSettings);
     setFormData(defaultSettings);
+    
+    toast({
+      title: "Settings Reset",
+      description: "All settings have been reset to default values.",
+      variant: "default",
+    });
   };
 
   if (isLoading) {
@@ -356,7 +383,7 @@ export default function Settings() {
                   type="number"
                   min="0"
                   max="30"
-                  value={formData.gracePeriodMinutes}
+                  value={formData.gracePeriodMinutes || ''}
                   onChange={(e) => handleInputChange("gracePeriodMinutes", parseInt(e.target.value))}
                 />
                 <p className="text-sm text-gray-500 mt-1">
@@ -371,7 +398,7 @@ export default function Settings() {
                   type="number"
                   min="1"
                   max="120"
-                  value={formData.maxLatePeriodMinutes}
+                  value={formData.maxLatePeriodMinutes || ''}
                   onChange={(e) => handleInputChange("maxLatePeriodMinutes", parseInt(e.target.value))}
                 />
                 <p className="text-sm text-gray-500 mt-1">
@@ -411,7 +438,7 @@ export default function Settings() {
                   type="number"
                   min="1"
                   max="10"
-                  value={formData.minTrainingImages}
+                  value={formData.minTrainingImages || ''}
                   onChange={(e) => handleInputChange("minTrainingImages", parseInt(e.target.value))}
                 />
                 <p className="text-sm text-gray-500 mt-1">

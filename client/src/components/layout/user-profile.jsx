@@ -12,16 +12,16 @@ export default function UserProfile() {
   const { data, isLoading } = useAuth();
   const logout = useLogout();
   
-  // Lấy thông tin user từ data
+  // Get user info from data
   const user = data?.user;
   
-  // Nếu đang loading hoặc chưa có user
+  // If loading or user not available
   if (isLoading || !user) {
     return (
       <div className="flex items-center space-x-3">
         <div className="text-right">
           <div className="text-sm font-medium text-gray-700">Loading...</div>
-          <div className="text-xs text-gray-500">Đang tải...</div>
+          <div className="text-xs text-gray-500">Fetching...</div>
         </div>
         <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
           <span className="text-gray-600 font-medium">U</span>
@@ -32,7 +32,7 @@ export default function UserProfile() {
 
   return (
     <div className="flex items-center space-x-3">
-      {/* Thông tin user */}
+      {/* User info */}
       <div className="text-right">
         <div className="text-sm font-medium text-gray-700">
           {user.fullName || "Unknown User"}
@@ -45,7 +45,7 @@ export default function UserProfile() {
         </div>
       </div>
       
-      {/* Avatar và dropdown */}
+      {/* Avatar & dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="w-10 h-10 bg-primary rounded-full p-0 hover:bg-primary/90">
@@ -58,12 +58,12 @@ export default function UserProfile() {
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem className="flex items-center space-x-2">
             <i className="fas fa-user w-4"></i>
-            <span>Thông tin cá nhân</span>
+            <span>Profile</span>
           </DropdownMenuItem>
           
           <DropdownMenuItem className="flex items-center space-x-2">
             <i className="fas fa-cog w-4"></i>
-            <span>Cài đặt</span>
+            <span>Settings</span>
           </DropdownMenuItem>
           
           <DropdownMenuSeparator />
@@ -74,7 +74,7 @@ export default function UserProfile() {
             disabled={logout.isPending}
           >
             <i className="fas fa-sign-out-alt w-4"></i>
-            <span>{logout.isPending ? "Đang đăng xuất..." : "Đăng xuất"}</span>
+            <span>{logout.isPending ? "Signing out..." : "Sign out"}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -7,41 +7,37 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api-config";
 
 export default function EditDepartmentModal({ isOpen, onClose, department }) {
   const { toast } = useToast();
   const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    manager: ""
+    name: ""
   });
 
   // Update form data when department prop changes
   useEffect(() => {
     if (department) {
       setFormData({
-        name: department.name || "",
-        description: department.description || "",
-        manager: department.manager || ""
+        name: department.department_name || ""
       });
     }
   }, [department]);
 
   const updateDepartmentMutation = useMutation({
     mutationFn: async (departmentData) => {
-      const response = await fetch(`/api/departments/${department.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(departmentData),
+      // Backend expects: department_name only (no description column in database)
+      const backendData = {
+        department_name: departmentData.name
+      };
+      
+      console.log('🔧 Updating department:', department.department_id, 'with data:', backendData);
+      
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      return await apiRequest(`/departments/${department.department_id}`, {
+        method: 'PUT',
+        body: JSON.stringify(backendData)
       });
-      
-      if (!response.ok) {
-        throw new Error("Failed to update department");
-      }
-      
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
@@ -103,24 +99,7 @@ export default function EditDepartmentModal({ isOpen, onClose, department }) {
             />
           </div>
           
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => handleInputChange("description", e.target.value)}
-              rows={3}
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="manager">Manager</Label>
-            <Input
-              id="manager"
-              value={formData.manager}
-              onChange={(e) => handleInputChange("manager", e.target.value)}
-            />
-          </div>
+
           
           <div className="flex justify-end space-x-4">
             <Button type="button" variant="outline" onClick={onClose}>

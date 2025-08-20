@@ -44,8 +44,8 @@ export default function AddRoleModal({ isOpen, onClose, departments, onSubmit, i
             />
           </div>
           <div>
-            <Label>Department *</Label>
-            <Select value={formData.departmentId} onValueChange={value => handleInputChange("departmentId", value)}>
+            <Label htmlFor="departmentSelect">Department *</Label>
+            <Select id="departmentSelect" value={formData.departmentId} onValueChange={value => handleInputChange("departmentId", value)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Department" />
               </SelectTrigger>

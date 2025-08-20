@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api-config";
 import EditRoleModal from "@/components/modals/edit-role-modal";
 
 export default function Roles() {
@@ -15,35 +16,43 @@ export default function Roles() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    departmentId: ""
+    name: ""
   });
   const { toast } = useToast();
 
   const { data: roles = [], isLoading: rolesLoading } = useQuery({
     queryKey: ["/api/roles"],
+    queryFn: async () => {
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      const data = await apiRequest('/roles');
+      console.log('✅ Roles Response:', data);
+      return data;
+    },
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ["/api/departments"],
+    queryFn: async () => {
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      const data = await apiRequest('/departments');
+      return data.departments || [];
+    },
   });
 
   const createRoleMutation = useMutation({
     mutationFn: async (roleData) => {
-      const response = await fetch("/api/roles", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(roleData),
+      // Backend expects: name only (static roles system)
+      const backendData = {
+        name: roleData.name
+      };
+      
+      console.log('🔧 Creating role with data:', backendData);
+      
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      return await apiRequest('/roles', {
+        method: 'POST',
+        body: JSON.stringify(backendData)
       });
-      
-      if (!response.ok) {
-        throw new Error("Failed to create role");
-      }
-      
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
@@ -52,7 +61,7 @@ export default function Roles() {
         description: "Role created successfully",
       });
       setShowAddModal(false);
-      setFormData({ name: "", description: "", departmentId: "" });
+      setFormData({ name: "" });
     },
     onError: (error) => {
       toast({
@@ -65,10 +74,10 @@ export default function Roles() {
 
   const deleteRoleMutation = useMutation({
     mutationFn: async (id) => {
-      const response = await fetch(`/api/roles/${id}`, {
-        method: "DELETE",
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      return await apiRequest(`/roles/${id}`, {
+        method: 'DELETE'
       });
-      if (!response.ok) throw new Error("Failed to delete role");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/roles"] });
@@ -89,10 +98,10 @@ export default function Roles() {
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.departmentId) {
+    if (!formData.name) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Please fill in role name",
         variant: "destructive",
       });
       return;
@@ -126,10 +135,8 @@ export default function Roles() {
     );
   }
 
-  const rolesWithDepartments = roles.map(role => ({
-    ...role,
-    department: departments.find(dept => dept.id === role.departmentId)
-  }));
+  // Roles are static, no need to map with departments
+  const rolesList = roles;
 
   return (
     <div>
@@ -151,31 +158,21 @@ export default function Roles() {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role Name</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {rolesWithDepartments.length === 0 ? (
+              {rolesList.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="2" className="px-6 py-8 text-center text-gray-500">
                     No roles found
                   </td>
                 </tr>
               ) : (
-                rolesWithDepartments.map((role) => (
+                rolesList.map((role) => (
                   <tr key={role.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{role.name}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{role.department?.name || "N/A"}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs truncate">
-                        {role.description || "No description"}
-                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       <button 
@@ -218,30 +215,7 @@ export default function Roles() {
                 value={formData.name}
                 onChange={(e) => handleInputChange("name", e.target.value)}
                 required
-              />
-            </div>
-            
-            <div>
-              <Label>Department *</Label>
-              <Select value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select Department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map(dept => (
-                    <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => handleInputChange("description", e.target.value)}
-                rows={3}
+                placeholder="Enter role name (e.g., hr_manager, employee)"
               />
             </div>
             

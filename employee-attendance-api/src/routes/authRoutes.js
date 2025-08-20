@@ -9,4 +9,7 @@ router.post('/register', authController.registerUser);
 // Endpoint đăng nhập
 router.post('/login', authController.loginUser);
 
+// Endpoint lấy thông tin người dùng hiện tại
+router.get('/me', authController.getCurrentUser);
+
 module.exports = router;

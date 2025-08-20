@@ -116,9 +116,23 @@ export default function Settings() {
       return { message: "Settings updated successfully" };
     },
     onSuccess: async (data) => {
-      // Invalidate all related queries
-      queryClient.invalidateQueries({ queryKey: ["/api/system/configs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      console.log('🔄 Settings updated - Invalidating all related data...');
+      
+      // Invalidate ALL related queries that depend on system configs
+      const queriesToInvalidate = [
+        ["/api/system/configs"],
+        ["/api/dashboard/stats"],
+        ["/api/attendance"],
+        ["/api/employees"],
+        ["/api/reports"],
+        ["/api/departments"]
+      ];
+      
+      // Invalidate each query
+      queriesToInvalidate.forEach(queryKey => {
+        console.log(`🔄 Invalidating query: ${queryKey}`);
+        queryClient.invalidateQueries({ queryKey });
+      });
       
       // Get fresh data from server (bypass cache)
       const freshData = await refetchFreshSettings();
@@ -130,7 +144,7 @@ export default function Settings() {
       
       toast({
         title: "Success",
-        description: "Settings updated successfully",
+        description: "Settings updated successfully. All related data will refresh automatically.",
       });
     },
     onError: (error) => {
@@ -414,9 +428,10 @@ export default function Settings() {
             <h3 className="text-lg font-semibold text-gray-800 mb-4">Face Recognition Configuration</h3>
             <div className="space-y-4">
               <div>
-                <Label>Recognition Confidence Threshold</Label>
+                <Label htmlFor="recognitionThreshold">Recognition Confidence Threshold</Label>
                 <div className="mt-2">
                   <Slider
+                    id="recognitionThreshold"
                     value={[recognitionThresholdValue]}
                     onValueChange={(value) => handleInputChange("recognitionThreshold", value[0].toFixed(2))}
                     max={0.99}

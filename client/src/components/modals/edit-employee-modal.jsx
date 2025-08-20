@@ -14,7 +14,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
     name: "",
     employeeId: "",
     email: "",
-    phone: "",
+    phoneNumber: "",
     departmentId: "",
     roleId: "",
     status: "active",
@@ -28,9 +28,9 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
         name: employee.name || "",
         employeeId: employee.employeeId || "",
         email: employee.email || "",
-        phone: employee.phone || "",
-        departmentId: employee.departmentId || "",
-        roleId: employee.roleId || "",
+        phoneNumber: employee.phoneNumber || "",
+        departmentId: employee.department?.name || "",
+        roleId: employee.role?.name || "",
         status: employee.status || "active",
         faceImages: employee.faceImages || []
       });
@@ -39,16 +39,27 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
 
   const updateEmployeeMutation = useMutation({
     mutationFn: async (employeeData) => {
-      const response = await fetch(`/api/employees/${employee.id}`, {
+      const token = localStorage.getItem('token');
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      console.log('🔐 Frontend - Token:', token ? 'Present' : 'Missing');
+      console.log('🔐 Frontend - User:', user);
+      console.log('🔐 Frontend - User ID:', user.id || user.user_id);
+      
+      const response = await fetch(`http://localhost:3000/api/employees/${employee.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "user-id": user.id || user.user_id
         },
         body: JSON.stringify(employeeData),
       });
       
       if (!response.ok) {
-        throw new Error("Failed to update employee");
+        const errorData = await response.json();
+        console.error('❌ Update failed:', response.status, errorData);
+        throw new Error(errorData.message || "Failed to update employee");
       }
       
       return response.json();
@@ -120,7 +131,10 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
                 value={formData.employeeId}
                 onChange={(e) => handleInputChange("employeeId", e.target.value)}
                 required
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
               />
+              <p className="text-xs text-gray-500 mt-1">Employee ID cannot be changed</p>
             </div>
             <div>
               <Label htmlFor="email">Email *</Label>
@@ -137,39 +151,39 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
               <Input
                 id="phone"
                 type="tel"
-                value={formData.phone}
-                onChange={(e) => handleInputChange("phone", e.target.value)}
+                value={formData.phoneNumber}
+                onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
               />
             </div>
             <div>
-              <Label>Department *</Label>
-              <Select value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
+              <Label htmlFor="departmentSelect">Department *</Label>
+              <Select id="departmentSelect" value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Department" />
                 </SelectTrigger>
                 <SelectContent>
                   {departments.map(dept => (
-                    <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                    <SelectItem key={dept.department_id} value={dept.department_name}>{dept.department_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Role *</Label>
-              <Select value={formData.roleId} onValueChange={(value) => handleInputChange("roleId", value)}>
+              <Label htmlFor="roleSelect">Role *</Label>
+              <Select id="roleSelect" value={formData.roleId} onValueChange={(value) => handleInputChange("roleId", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Role" />
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map(role => (
-                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
-                  ))}
+                    <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
+              <Label htmlFor="statusSelect">Status</Label>
+              <Select id="statusSelect" value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Status" />
                 </SelectTrigger>

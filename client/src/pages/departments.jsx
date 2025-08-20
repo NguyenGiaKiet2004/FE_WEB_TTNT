@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api-config";
 import AddDepartmentModal from "@/components/modals/add-department-modal";
 import EditDepartmentModal from "@/components/modals/edit-department-modal";
 
@@ -12,16 +13,24 @@ export default function Departments() {
   const [selectedDepartment, setSelectedDepartment] = useState(null);
   const { toast } = useToast();
 
-  const { data: departments = [], isLoading } = useQuery({
+  const { data: departmentsResponse, isLoading } = useQuery({
     queryKey: ["/api/departments"],
+    queryFn: async () => {
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      const data = await apiRequest('/departments');
+      console.log('✅ Departments Response:', data);
+      return data;
+    },
   });
+
+  const departments = departmentsResponse?.departments || [];
 
   const deleteDepartmentMutation = useMutation({
     mutationFn: async (id) => {
-      const response = await fetch(`/api/departments/${id}`, {
-        method: "DELETE",
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      return await apiRequest(`/departments/${id}`, {
+        method: 'DELETE'
       });
-      if (!response.ok) throw new Error("Failed to delete department");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/departments"] });
@@ -104,10 +113,10 @@ export default function Departments() {
           </div>
         ) : (
           departments.map((department) => (
-            <div key={department.id} className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+            <div key={department.department_id} className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-4">
-                <div className={`w-12 h-12 ${getDepartmentIconBg(department.name)} rounded-lg flex items-center justify-center`}>
-                  <i className={`${getDepartmentIcon(department.name)} text-xl`}></i>
+                <div className={`w-12 h-12 ${getDepartmentIconBg(department.department_name)} rounded-lg flex items-center justify-center`}>
+                  <i className={`${getDepartmentIcon(department.department_name)} text-xl`}></i>
                 </div>
                 <div className="flex space-x-2">
                   <button 
@@ -120,16 +129,24 @@ export default function Departments() {
                     <i className="fas fa-edit"></i>
                   </button>
                   <button 
-                    className="text-red-600 hover:text-red-800"
-                    onClick={() => deleteDepartmentMutation.mutate(department.id)}
+                    className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete ${department.department_name}? This action cannot be undone.`)) {
+                        deleteDepartmentMutation.mutate(department.department_id);
+                      }
+                    }}
                     disabled={deleteDepartmentMutation.isPending}
+                    title={deleteDepartmentMutation.isPending ? "Deleting..." : "Delete department"}
                   >
-                    <i className="fas fa-trash"></i>
+                    {deleteDepartmentMutation.isPending ? (
+                      <i className="fas fa-spinner fa-spin"></i>
+                    ) : (
+                      <i className="fas fa-trash"></i>
+                    )}
                   </button>
                 </div>
               </div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">{department.name}</h3>
-              <p className="text-sm text-gray-600 mb-4">{department.description || "No description available"}</p>
+                             <h3 className="text-lg font-semibold text-gray-800 mb-2">{department.department_name}</h3>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500">
                   Employees: <span className="font-medium text-gray-700">{department.employeeCount || 0}</span>

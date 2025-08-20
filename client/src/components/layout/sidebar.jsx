@@ -12,14 +12,14 @@ export default function Sidebar() {
         { name: "Dashboard", path: "/dashboard", icon: "fas fa-chart-pie" },
         { name: "Employees", path: "/employees", icon: "fas fa-users" },
         { name: "Departments", path: "/departments", icon: "fas fa-building" },
-        { name: "Roles", path: "/roles", icon: "fas fa-user-tag" },
+        // { name: "Roles", path: "/roles", icon: "fas fa-user-tag" },
       ]
     },
     {
       section: "REPORTS", 
       items: [
         { name: "Attendance", path: "/attendance", icon: "fas fa-clock" },
-        { name: "Reports", path: "/reports", icon: "fas fa-chart-bar" },
+        // { name: "Reports", path: "/reports", icon: "fas fa-chart-bar" },
       ]
     }
     ,

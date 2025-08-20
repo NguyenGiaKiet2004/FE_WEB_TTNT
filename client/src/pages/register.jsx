@@ -53,42 +53,42 @@ export default function Register() {
     const newErrors = {};
     
     if (!form.fullName.trim()) {
-      newErrors.fullName = 'Họ tên không được để trống';
+      newErrors.fullName = 'Full name is required';
     } else if (form.fullName.trim().length < 2) {
-      newErrors.fullName = 'Họ tên phải có ít nhất 2 ký tự';
+      newErrors.fullName = 'Full name must be at least 2 characters';
     }
     
     if (!form.email.trim()) {
-      newErrors.email = 'Email không được để trống';
+      newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      newErrors.email = 'Email không hợp lệ';
+      newErrors.email = 'Invalid email address';
     }
     
     if (!form.password) {
-      newErrors.password = 'Mật khẩu không được để trống';
+      newErrors.password = 'Password is required';
     } else if (form.password.length < 6) {
-      newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
+      newErrors.password = 'Password must be at least 6 characters';
     } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}$/.test(form.password)) {
-      newErrors.password = 'Mật khẩu phải có chữ hoa, chữ thường và số';
+      newErrors.password = 'Password must include uppercase, lowercase and a number';
     }
     
     if (!form.confirmPassword) {
-      newErrors.confirmPassword = 'Xác nhận mật khẩu không được để trống';
+      newErrors.confirmPassword = 'Confirm password is required';
     } else if (form.password !== form.confirmPassword) {
-      newErrors.confirmPassword = 'Mật khẩu xác nhận không khớp';
+      newErrors.confirmPassword = 'Passwords do not match';
     }
     
     if (form.phoneNumber && !/^(\+84|84|0)[0-9]{9}$/.test(form.phoneNumber)) {
-      newErrors.phoneNumber = 'Số điện thoại không hợp lệ';
+      newErrors.phoneNumber = 'Invalid phone number';
     }
     
     if (!form.role) {
-      newErrors.role = 'Vui lòng chọn vai trò';
+      newErrors.role = 'Please select a role';
     }
     
     // Department is optional, but if selected, validate it exists
     if (form.departmentId && !departments.find(dept => dept.department_id.toString() === form.departmentId)) {
-      newErrors.departmentId = 'Phòng ban không hợp lệ';
+      newErrors.departmentId = 'Invalid department';
     }
     
     setErrors(newErrors);
@@ -120,7 +120,7 @@ export default function Register() {
       }),
     });
 
-      setSuccess("Đăng ký thành công! Vui lòng đăng nhập.");
+      setSuccess("Registration successful! Please sign in.");
       // Reset form
       setForm({
         fullName: "",
@@ -133,7 +133,7 @@ export default function Register() {
       });
     } catch (error) {
       console.log('Register error:', error);
-      setError(error.message || "Có lỗi xảy ra khi đăng ký");
+      setError(error.message || "An error occurred during registration");
     } finally {
       setIsPending(false);
     }
@@ -176,13 +176,13 @@ export default function Register() {
           <div className="mx-auto w-20 h-20 bg-primary rounded-xl flex items-center justify-center mb-8">
             <i className="fas fa-user-plus text-white text-4xl"></i>
           </div>
-          <h2 className="text-4xl font-extrabold text-white drop-shadow-md">Đăng Ký Tài Khoản</h2>
-          <p className="mt-4 text-lg text-gray-200 font-medium drop-shadow">Tạo tài khoản mới để sử dụng hệ thống</p>
+          <h2 className="text-4xl font-extrabold text-white drop-shadow-md">Create Account</h2>
+          <p className="mt-4 text-lg text-gray-200 font-medium drop-shadow">Create a new account to use the system</p>
         </div>
         <Card className="bg-black/70 backdrop-blur-md border-none shadow-2xl">
           <CardHeader>
-            <CardTitle className="text-2xl text-white font-bold">Thông Tin Đăng Ký</CardTitle>
-            <CardDescription className="text-base text-gray-200 font-medium">Điền thông tin để tạo tài khoản mới</CardDescription>
+            <CardTitle className="text-2xl text-white font-bold">Registration Information</CardTitle>
+            <CardDescription className="text-base text-gray-200 font-medium">Fill in the information to create a new account</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-8">
@@ -198,7 +198,7 @@ export default function Register() {
               )}
               <div className="space-y-6">
                 <div>
-                  <Label htmlFor="fullName" className="text-lg text-white font-semibold">Họ và tên *</Label>
+                  <Label htmlFor="fullName" className="text-lg text-white font-semibold">Full name *</Label>
                   <Input 
                     id="fullName"
                     name="fullName"
@@ -207,7 +207,7 @@ export default function Register() {
                     onChange={handleChange("fullName")} 
                     required 
                     autoComplete="name"
-                    placeholder="Nhập họ và tên đầy đủ"
+                    placeholder="Enter your full name"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                       errors.fullName ? 'border-red-400' : ''
                     }`}
@@ -236,7 +236,7 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="password" className="text-lg text-white font-semibold">Mật khẩu *</Label>
+                  <Label htmlFor="password" className="text-lg text-white font-semibold">Password *</Label>
                   <div className="relative">
                     <Input 
                       id="password"
@@ -246,7 +246,7 @@ export default function Register() {
                       onChange={handleChange("password")} 
                       required 
                       autoComplete="new-password"
-                      placeholder="Nhập mật khẩu mới"
+                      placeholder="Enter a new password"
                       className={`mt-2 text-lg px-5 py-4 pr-12 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                         errors.password ? 'border-red-400' : ''
                       }`}
@@ -264,7 +264,7 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="confirmPassword" className="text-lg text-white font-semibold">Xác nhận mật khẩu *</Label>
+                  <Label htmlFor="confirmPassword" className="text-lg text-white font-semibold">Confirm password *</Label>
                   <div className="relative">
                     <Input 
                       id="confirmPassword"
@@ -274,7 +274,7 @@ export default function Register() {
                       onChange={handleChange("confirmPassword")} 
                       required 
                       autoComplete="new-password"
-                      placeholder="Nhập lại mật khẩu để xác nhận"
+                      placeholder="Re-enter your password to confirm"
                       className={`mt-2 text-lg px-5 py-4 pr-12 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                         errors.confirmPassword ? 'border-red-400' : ''
                       }`}
@@ -292,20 +292,20 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="departmentId" className="text-lg text-white font-semibold">Phòng ban <span className="text-gray-400">(Tùy chọn)</span></Label>
-                  <Select value={form.departmentId} onValueChange={(value) => handleSelectChange("departmentId", value)}>
-                    <SelectTrigger id="departmentId" className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
-                      <SelectValue placeholder={departmentsLoading ? "Đang tải..." : "Chọn phòng ban (tùy chọn)"} />
+                  <Label htmlFor="departmentId" className="text-lg text-white font-semibold">Department <span className="text-gray-400">(Optional)</span></Label>
+                  <Select id="departmentId" value={form.departmentId} onValueChange={(value) => handleSelectChange("departmentId", value)}>
+                    <SelectTrigger className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
+                      <SelectValue placeholder={departmentsLoading ? "Loading..." : "Select department (optional)"} />
                     </SelectTrigger>
                     <SelectContent>
                       {departmentsLoading ? (
                         <div className="p-4 text-center text-gray-500">
                           <Loader2 className="animate-spin mx-auto mb-2" />
-                          Đang tải danh sách phòng ban...
+                          Loading departments...
                         </div>
                       ) : departmentsError ? (
                         <div className="p-4 text-center text-red-500">
-                          Lỗi tải danh sách phòng ban
+                          Failed to load departments
                         </div>
                                              ) : departments && departments.length > 0 ? (
                          departments
@@ -320,11 +320,11 @@ export default function Register() {
                            <SelectItem value="">
                              <div className="flex items-center space-x-2">
                                <i className="fas fa-times text-gray-400"></i>
-                               <span>Không có phòng ban</span>
+                               <span>No departments</span>
                              </div>
                            </SelectItem>
                            <div className="p-4 text-center text-gray-500">
-                             Không có phòng ban nào để chọn
+                             No departments available
                            </div>
                          </>
                        )}
@@ -335,9 +335,9 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="role" className="text-lg text-white font-semibold">Vai trò *</Label>
-                  <Select value={form.role} onValueChange={(value) => handleSelectChange("role", value)}>
-                    <SelectTrigger id="role" className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
+                  <Label htmlFor="role" className="text-lg text-white font-semibold">Role *</Label>
+                  <Select id="role" value={form.role} onValueChange={(value) => handleSelectChange("role", value)}>
+                    <SelectTrigger className="mt-2 text-lg px-5 py-4 text-white bg-black/40 border-gray-500 focus:bg-black/60">
                       <SelectValue placeholder="Chọn vai trò" />
                     </SelectTrigger>
                     <SelectContent>
@@ -366,7 +366,7 @@ export default function Register() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="phoneNumber" className="text-lg text-white font-semibold">Số điện thoại</Label>
+                  <Label htmlFor="phoneNumber" className="text-lg text-white font-semibold">Phone number</Label>
                   <Input 
                     id="phoneNumber"
                     name="phoneNumber"
@@ -374,7 +374,7 @@ export default function Register() {
                     value={form.phoneNumber} 
                     onChange={handleChange("phoneNumber")} 
                     autoComplete="tel"
-                    placeholder="Nhập số điện thoại (VD: 0123456789)"
+                    placeholder="Enter phone number (e.g., 0123456789)"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
                       errors.phoneNumber ? 'border-red-400' : ''
                     }`}
@@ -388,25 +388,25 @@ export default function Register() {
                 {isPending ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Đang đăng ký...
+                    Registering...
                   </>
                 ) : (
                   <>
                     <i className="fas fa-user-plus mr-2"></i>
-                    Đăng Ký
+                    Sign Up
                   </>
                 )}
               </Button>
             </form>
             <div className="mt-8 text-center">
               <Button variant="link" type="button" className="text-lg text-primary font-bold" onClick={() => setLocation("/login")}>
-                Đã có tài khoản? Đăng nhập
+                Already have an account? Sign in
               </Button>
             </div>
           </CardContent>
         </Card>
         <div className="text-center mt-8">
-          <p className="text-base text-gray-200 font-medium">Hệ Thống Chấm Công Khuôn Mặt Thông Minh</p>
+          <p className="text-base text-gray-200 font-medium">Smart Face Attendance System</p>
         </div>
       </div>
     </div>

@@ -33,13 +33,13 @@ export default function Login() {
     const newErrors = {};
     
     if (!credentials.email.trim()) {
-      newErrors.email = 'Email không được để trống';
+      newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(credentials.email)) {
-      newErrors.email = 'Email không hợp lệ';
+      newErrors.email = 'Invalid email address';
     }
     
     if (!credentials.password) {
-      newErrors.password = 'Mật khẩu không được để trống';
+      newErrors.password = 'Password is required';
     }
     
     setErrors(newErrors);
@@ -120,10 +120,10 @@ export default function Login() {
             <i className="fas fa-user-shield text-white text-4xl"></i>
           </div>
           <h2 className="text-4xl font-extrabold text-white drop-shadow-md">
-            Đăng Nhập Hệ Thống
+            Sign In
           </h2>
           <p className="mt-4 text-lg text-gray-200 font-medium drop-shadow">
-            Đăng nhập để truy cập hệ thống chấm công khuôn mặt
+            Sign in to access the smart face attendance system
           </p>
         </div>
 
@@ -131,7 +131,7 @@ export default function Login() {
         {login.error && (
           <Alert variant="destructive">
             <AlertDescription>
-              {login.error.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.'}
+              {login.error.data?.message || 'Login failed. Please try again.'}
             </AlertDescription>
           </Alert>
         )}
@@ -139,9 +139,9 @@ export default function Login() {
         {/* Login Form */}
         <Card className="bg-black/70 backdrop-blur-md border-none shadow-2xl">
           <CardHeader>
-            <CardTitle className="text-2xl text-white font-bold">Chào mừng trở lại</CardTitle>
+            <CardTitle className="text-2xl text-white font-bold">Welcome back</CardTitle>
             <CardDescription className="text-base text-gray-200 font-medium">
-              Nhập thông tin đăng nhập để truy cập hệ thống
+              Enter your credentials to sign in
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -149,7 +149,7 @@ export default function Login() {
               {login.error && (
                 <Alert variant="destructive">
                   <AlertDescription>
-                    {login.error.message || "Email hoặc mật khẩu không đúng"}
+                    {login.error.message || "Incorrect email or password"}
                   </AlertDescription>
                 </Alert>
               )}
@@ -164,7 +164,7 @@ export default function Login() {
                     type="email"
                     value={credentials.email}
                     onChange={handleInputChange("email")}
-                    placeholder="Nhập email của bạn"
+                    placeholder="Enter your email"
                     required
                     autoComplete="email"
                     className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
@@ -177,7 +177,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <Label htmlFor="password" className="text-lg text-white font-semibold">Mật khẩu</Label>
+                  <Label htmlFor="password" className="text-lg text-white font-semibold">Password</Label>
                   <div className="relative">
                     <Input
                       id="password"
@@ -185,7 +185,7 @@ export default function Login() {
                       type={showPassword ? "text" : "password"}
                       value={credentials.password}
                       onChange={handleInputChange("password")}
-                      placeholder="Nhập mật khẩu của bạn"
+                      placeholder="Enter your password"
                       required
                       autoComplete="current-password"
                       className={`mt-2 text-lg px-5 py-4 pr-12 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60 ${
@@ -214,12 +214,12 @@ export default function Login() {
                 {login.isPending ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Đang đăng nhập...
+                    Signing in...
                   </>
                 ) : (
                   <>
                     <i className="fas fa-sign-in-alt mr-2"></i>
-                    Đăng Nhập
+                    Sign In
                   </>
                 )}
               </Button>
@@ -231,11 +231,11 @@ export default function Login() {
         {/* Footer */}
         <div className="text-center mt-8">
           <p className="text-sm text-gray-200 font-medium">
-            Hệ Thống Chấm Công Khuôn Mặt Thông Minh
+            Smart Face Attendance System
           </p>
           <p className="mt-3 text-base text-gray-100">
-            Chưa có tài khoản?{' '}
-            <a href="/register" className="text-primary hover:underline font-semibold">Đăng ký ngay</a>
+            Don’t have an account?{' '}
+            <a href="/register" className="text-primary hover:underline font-semibold">Sign up</a>
           </p>
         </div>
       </div>

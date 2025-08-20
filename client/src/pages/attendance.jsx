@@ -4,39 +4,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { apiRequest } from "@/lib/api-config";
+import * as XLSX from 'xlsx';
 
 export default function Attendance() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: attendanceRecords = [], isLoading } = useQuery({
+  const { data: attendanceResponse, isLoading } = useQuery({
     queryKey: ["/api/attendance"],
+    queryFn: async () => {
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      const data = await apiRequest('/attendance');
+      console.log('✅ Attendance Response:', data);
+      return data;
+    },
   });
 
-  const { data: departments = [] } = useQuery({
-    queryKey: ["/api/departments"],
-  });
+  const attendanceRecords = attendanceResponse?.records || [];
 
   const filteredRecords = attendanceRecords.filter(record => {
-    const matchesDepartment = departmentFilter === "all" || 
-                             record.employee?.department?.name === departmentFilter;
-    
     const matchesStatus = statusFilter === "all" || 
                          record.status === statusFilter;
     
     let matchesDate = true;
-    if (dateFrom && record.date < dateFrom) matchesDate = false;
-    if (dateTo && record.date > dateTo) matchesDate = false;
+    if (dateFrom && record.recordDate < dateFrom) matchesDate = false;
+    if (dateTo && record.recordDate > dateTo) matchesDate = false;
     
-    return matchesDepartment && matchesStatus && matchesDate;
+    return matchesStatus && matchesDate;
   });
 
   const getStatusBadge = (status) => {
     switch (status) {
       case "present":
         return <Badge className="bg-green-100 text-green-800">Present</Badge>;
+      case "on_time":
+        return <Badge className="bg-blue-100 text-blue-800">On Time</Badge>;
       case "late":
         return <Badge className="bg-orange-100 text-orange-800">Late</Badge>;
       case "absent":
@@ -46,6 +50,118 @@ export default function Attendance() {
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
+  };
+
+  // Format time to HH:MM:SS
+  const formatTime = (dateString) => {
+    if (!dateString) return "N/A";
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "N/A";
+      
+      return date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    } catch (error) {
+      return "N/A";
+    }
+  };
+
+  // Calculate working hours: Check Out - Check In
+  const calculateWorkingHours = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) {
+      return "N/A";
+    }
+
+    try {
+      const checkInTime = new Date(checkIn);
+      const checkOutTime = new Date(checkOut);
+      
+      // Check if dates are valid
+      if (isNaN(checkInTime.getTime()) || isNaN(checkOutTime.getTime())) {
+        return "N/A";
+      }
+
+      // Calculate difference in milliseconds
+      const diffMs = checkOutTime.getTime() - checkInTime.getTime();
+      
+      // Convert to hours and minutes
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      
+      // Format: "Xh Ym" or "Ym" if less than 1 hour
+      if (diffHours > 0) {
+        return `${diffHours}h ${diffMinutes}m`;
+      } else {
+        return `${diffMinutes}m`;
+      }
+    } catch (error) {
+      console.error('Error calculating working hours:', error);
+      return "N/A";
+    }
+  };
+
+  // Export to Excel function
+  const exportToExcel = () => {
+    if (filteredRecords.length === 0) {
+      alert('Không có dữ liệu để export!');
+      return;
+    }
+
+    try {
+      // Prepare data for Excel
+      const excelData = filteredRecords.map(record => ({
+        'Employee Name': record.fullName || 'Unknown',
+        'Date': new Date(record.recordDate).toLocaleDateString('vi-VN'),
+        'Check In': formatTime(record.checkIn),
+        'Check Out': formatTime(record.checkOut),
+        'Working Hours': calculateWorkingHours(record.checkIn, record.checkOut),
+        'Status': record.status || 'N/A',
+        'Notes': record.notes || ''
+      }));
+
+      // Create workbook and worksheet
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths
+      const columnWidths = [
+        { wch: 20 }, // Employee Name
+        { wch: 12 }, // Date
+        { wch: 12 }, // Check In
+        { wch: 12 }, // Check Out
+        { wch: 15 }, // Working Hours
+        { wch: 12 }, // Status
+        { wch: 30 }  // Notes
+      ];
+      worksheet['!cols'] = columnWidths;
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Records');
+
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `attendance_records_${currentDate}.xlsx`;
+
+      // Save file
+      XLSX.writeFile(workbook, filename);
+
+      console.log('✅ Excel file exported successfully:', filename);
+    } catch (error) {
+      console.error('❌ Error exporting to Excel:', error);
+      alert('Có lỗi khi export file Excel!');
+    }
+  };
+
+  // Clear all filters function
+  const clearFilters = () => {
+    setDateFrom("");
+    setDateTo("");
+    setStatusFilter("all");
   };
 
   if (isLoading) {
@@ -80,66 +196,56 @@ export default function Attendance() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold text-gray-800">Attendance Records</h2>
-        <div className="flex space-x-3">
-          <Button className="bg-green-600 text-white hover:bg-green-700">
-            <i className="fas fa-download mr-2"></i>
-            Export
-          </Button>
-          <Button className="bg-primary text-white hover:bg-blue-600">
-            <i className="fas fa-filter mr-2"></i>
-            Filter
-          </Button>
-        </div>
+                 <div className="flex space-x-3">
+           <Button 
+             onClick={exportToExcel}
+             className="bg-green-600 text-white hover:bg-green-700"
+             disabled={filteredRecords.length === 0}
+           >
+             <i className="fas fa-download mr-2"></i>
+             Export Excel
+           </Button>
+           <Button 
+             onClick={clearFilters}
+             className="bg-gray-500 text-white hover:bg-gray-600"
+             disabled={dateFrom === "" && dateTo === "" && statusFilter === "all"}
+           >
+             <i className="fas fa-times mr-2"></i>
+             Clear Filters
+           </Button>
+         </div>
       </div>
 
-      {/* Date Range Filter */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            placeholder="From Date"
-          />
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            placeholder="To Date"
-          />
-          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="All Departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map(dept => (
-                <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="present">Present</SelectItem>
-              <SelectItem value="absent">Absent</SelectItem>
-              <SelectItem value="late">Late</SelectItem>
-              <SelectItem value="time_off">Time Off</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button 
-            onClick={() => {
-              // Apply filter logic is already handled by the filteredRecords
-            }}
-            className="bg-primary hover:bg-blue-600"
-          >
-            Apply Filter
-          </Button>
-        </div>
-      </div>
+             {/* Date Range Filter */}
+               <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+           <Input
+             type="date"
+             value={dateFrom}
+             onChange={(e) => setDateFrom(e.target.value)}
+             placeholder="From Date"
+           />
+           <Input
+             type="date"
+             value={dateTo}
+             onChange={(e) => setDateTo(e.target.value)}
+             placeholder="To Date"
+           />
+                       <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="present">Present</SelectItem>
+                <SelectItem value="on_time">On Time</SelectItem>
+                <SelectItem value="late">Late</SelectItem>
+                <SelectItem value="absent">Absent</SelectItem>
+                <SelectItem value="time_off">Time Off</SelectItem>
+              </SelectContent>
+            </Select>
+         </div>
+       </div>
 
       {/* Attendance Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -170,26 +276,26 @@ export default function Attendance() {
                       <div className="flex items-center">
                         <div className="w-8 h-8 bg-gray-300 rounded-full mr-3 flex items-center justify-center">
                           <span className="text-xs font-medium text-gray-600">
-                            {record.employee?.name?.split(' ').map(n => n[0]).join('').toUpperCase() || "N/A"}
+                            {record.fullName?.split(' ').map(n => n[0]).join('').toUpperCase() || "N/A"}
                           </span>
                         </div>
                         <div className="text-sm font-medium text-gray-900">
-                          {record.employee?.name || "Unknown Employee"}
+                          {record.fullName || "Unknown Employee"}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(record.date).toLocaleDateString()}
+                      {new Date(record.recordDate).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {record.checkIn || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {record.checkOut || "N/A"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {record.workingHours || "N/A"}
-                    </td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                       {formatTime(record.checkIn)}
+                     </td>
+                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                       {formatTime(record.checkOut)}
+                     </td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                       {calculateWorkingHours(record.checkIn, record.checkOut)}
+                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(record.status)}
                     </td>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   DropdownMenu,
@@ -13,90 +13,18 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function NotificationsDropdown() {
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { data } = useQuery({
+    queryKey: ["/api/notifications"],
+  });
+  const notifications = (data?.notifications || []).map(n => ({
+    ...n,
+    time: new Date(n.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+  }));
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
 
-  // Mock notifications data - in real app, this would come from API
-  useEffect(() => {
-    const mockNotifications = [
-      {
-        id: 1,
-        type: "attendance",
-        title: "John Doe checked in",
-        message: "Employee John Doe has checked in at 8:30 AM",
-        time: "2 minutes ago",
-        read: false,
-        icon: "fas fa-clock",
-        color: "text-green-600",
-        bgColor: "bg-green-100"
-      },
-      {
-        id: 2,
-        type: "attendance",
-        title: "Sarah Wilson checked out",
-        message: "Employee Sarah Wilson has checked out at 5:45 PM",
-        time: "15 minutes ago",
-        read: false,
-        icon: "fas fa-sign-out-alt",
-        color: "text-blue-600",
-        bgColor: "bg-blue-100"
-      },
-      {
-        id: 3,
-        type: "system",
-        title: "System Update Available",
-        message: "New version 2.1.0 is available for download",
-        time: "1 hour ago",
-        read: true,
-        icon: "fas fa-download",
-        color: "text-purple-600",
-        bgColor: "bg-purple-100"
-      },
-      {
-        id: 4,
-        type: "reminder",
-        title: "Monthly Report Due",
-        message: "Monthly attendance report is due tomorrow",
-        time: "2 hours ago",
-        read: false,
-        icon: "fas fa-calendar",
-        color: "text-orange-600",
-        bgColor: "bg-orange-100"
-      },
-      {
-        id: 5,
-        type: "approval",
-        title: "Leave Request Pending",
-        message: "Mike Johnson requested 3 days leave",
-        time: "3 hours ago",
-        read: false,
-        icon: "fas fa-user-clock",
-        color: "text-yellow-600",
-        bgColor: "bg-yellow-100"
-      }
-    ];
+  const markAsRead = () => {};
 
-    setNotifications(mockNotifications);
-    setUnreadCount(mockNotifications.filter(n => !n.read).length);
-  }, []);
-
-  const markAsRead = (notificationId) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notificationId 
-          ? { ...notif, read: true }
-          : notif
-      )
-    );
-    setUnreadCount(prev => Math.max(0, prev - 1));
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notif => ({ ...notif, read: true }))
-    );
-    setUnreadCount(0);
-  };
+  const markAllAsRead = () => {};
 
   const getNotificationIcon = (type) => {
     switch (type) {
@@ -206,8 +134,8 @@ export default function NotificationsDropdown() {
                   onClick={() => markAsRead(notification.id)}
                 >
                   <div className="flex items-start space-x-3 w-full">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${notification.bgColor}`}>
-                      <i className={`${notification.icon} ${notification.color}`}></i>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${getNotificationBgColor(notification.type)}`}>
+                      <i className={`${getNotificationIcon(notification.type)} ${getNotificationColor(notification.type)}`}></i>
                     </div>
                     
                     <div className="flex-1 min-w-0">

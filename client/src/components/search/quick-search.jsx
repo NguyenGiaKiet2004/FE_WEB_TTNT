@@ -10,6 +10,10 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -19,17 +23,20 @@ export default function QuickSearch() {
   const [, setLocation] = useLocation();
 
   // Fetch data for search
-  const { data: employees = [] } = useQuery({
+  const { data: employeesResponse } = useQuery({
     queryKey: ["/api/employees"],
   });
+  const employees = employeesResponse?.employees || [];
 
-  const { data: departments = [] } = useQuery({
+  const { data: departmentsResponse } = useQuery({
     queryKey: ["/api/departments"],
   });
+  const departments = departmentsResponse?.departments || [];
 
-  const { data: roles = [] } = useQuery({
+  const { data: rolesResponse } = useQuery({
     queryKey: ["/api/roles"],
   });
+  const roles = rolesResponse || [];
 
   // Keyboard shortcut
   useEffect(() => {
@@ -51,11 +58,23 @@ export default function QuickSearch() {
 
     const results = [];
 
+    // Debug logging
+    console.log('🔍 QuickSearch Debug:', {
+      employees: employees,
+      employeesType: typeof employees,
+      isArray: Array.isArray(employees),
+      departments: departments,
+      roles: roles
+    });
+
+    // Ensure employees is an array
+    const employeesArray = Array.isArray(employees) ? employees : [];
+    
     // Employees
-    const filteredEmployees = employees.filter(emp => 
-      emp.name?.toLowerCase().includes(query) ||
+    const filteredEmployees = employeesArray.filter(emp => 
+      emp.fullName?.toLowerCase().includes(query) ||
       emp.email?.toLowerCase().includes(query) ||
-      emp.employeeId?.toLowerCase().includes(query)
+      String(emp.employeeId || "").toLowerCase().includes(query)
     );
 
     if (filteredEmployees.length > 0) {
@@ -64,7 +83,7 @@ export default function QuickSearch() {
         title: "Employees",
         items: filteredEmployees.slice(0, 5).map(emp => ({
           id: emp.id,
-          title: emp.name,
+          title: emp.fullName,
           subtitle: emp.email,
           description: `Employee ID: ${emp.employeeId}`,
           icon: "fas fa-user",
@@ -74,10 +93,12 @@ export default function QuickSearch() {
       });
     }
 
+    // Ensure departments is an array
+    const departmentsArray = Array.isArray(departments) ? departments : [];
+    
     // Departments
-    const filteredDepartments = departments.filter(dept => 
-      dept.name?.toLowerCase().includes(query) ||
-      dept.manager?.toLowerCase().includes(query)
+    const filteredDepartments = departmentsArray.filter(dept => 
+      dept.department_name?.toLowerCase().includes(query)
     );
 
     if (filteredDepartments.length > 0) {
@@ -85,10 +106,10 @@ export default function QuickSearch() {
         type: "departments",
         title: "Departments",
         items: filteredDepartments.slice(0, 3).map(dept => ({
-          id: dept.id,
-          title: dept.name,
-          subtitle: dept.manager || "No manager",
-          description: `${dept.employeeCount || 0} employees`,
+          id: dept.department_id,
+          title: dept.department_name,
+          subtitle: "Department",
+          description: `#${dept.department_id}`,
           icon: "fas fa-building",
           action: () => setLocation(`/departments`),
           badge: null
@@ -96,10 +117,12 @@ export default function QuickSearch() {
       });
     }
 
+    // Ensure roles is an array
+    const rolesArray = Array.isArray(roles) ? roles : [];
+    
     // Roles
-    const filteredRoles = roles.filter(role => 
-      role.name?.toLowerCase().includes(query) ||
-      role.description?.toLowerCase().includes(query)
+    const filteredRoles = rolesArray.filter(role => 
+      role.name?.toLowerCase().includes(query)
     );
 
     if (filteredRoles.length > 0) {
@@ -177,6 +200,10 @@ export default function QuickSearch() {
       </Button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
+        <DialogTitle className="sr-only">Quick Search</DialogTitle>
+        <DialogDescription className="sr-only">
+          Search for employees, departments, roles, and quick actions
+        </DialogDescription>
         <Command>
           <CommandInput 
             placeholder="Search employees, departments, roles..." 

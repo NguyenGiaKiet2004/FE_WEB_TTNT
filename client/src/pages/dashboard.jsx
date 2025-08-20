@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import StatsCard from "@/components/dashboard/stats-card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -12,44 +13,48 @@ export default function Dashboard() {
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [lineAnimation, setLineAnimation] = useState(false);
   const [barAnimation, setBarAnimation] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
-    queryFn: async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/dashboard/stats', {
-          credentials: 'include'
-        });
-        if (!response.ok) {
-          throw new Error('API call failed');
-        }
-        return await response.json();
-      } catch (error) {
-        console.error('Dashboard stats error:', error);
-        // Fallback data if API fails
-        return {
-          totalEmployees: 5,
-          onTime: 6,
-          lateArrival: 3,
-          absent: 3,
-          earlyDeparture: 0,
-          timeOff: 0
-        };
-      }
-    },
-    // Refresh every 30 seconds to get latest data
+    // Using default queryFn from queryClient (attaches auth header)
     refetchInterval: 30000,
-    // Don't cache for too long
     staleTime: 10000,
   });
 
-  const { data: attendanceRecords = [] } = useQuery({
-    queryKey: ["/api/attendance"],
+  // Fetch attendance series for charts (must be declared before any early return)
+  const daysByPeriod = chartPeriod === 'monthly' ? 30 : 7;
+  const { data: series = { current: [], previous: [] } } = useQuery({
+    queryKey: [`/api/attendance/series?period=${chartPeriod}&days=${daysByPeriod}`],
   });
 
-  const { data: employees = [] } = useQuery({
+  // Weekly series exclusively for bar chart
+  const { data: weeklySeries = { current: [] } } = useQuery({
+    queryKey: ["/api/attendance/series?period=weekly&days=7"],
+  });
+
+  const [attendancePage, setAttendancePage] = useState(1);
+  const pageSize = 5;
+  const { data: attendanceData } = useQuery({
+    queryKey: ["/api/attendance", { page: attendancePage, limit: pageSize }],
+  });
+  const attendanceRecords = attendanceData?.records || [];
+  const attendanceTotal = attendanceData?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(attendanceTotal / pageSize));
+
+  const { data: employeesResponse = { employees: [] } } = useQuery({
     queryKey: ["/api/employees"],
   });
+  const employees = employeesResponse?.employees || [];
+
+  // Departments for filter dropdown
+  const { data: departmentsResponse } = useQuery({
+    queryKey: ["/api/departments"],
+  });
+  const departments = departmentsResponse?.departments || [];
 
   const currentDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -67,6 +72,18 @@ export default function Dashboard() {
       clearTimeout(timer2);
     };
   }, []);
+
+  const openDetail = async (id) => {
+    try {
+      const res = await fetch(`http://localhost:3000/api/attendance/detail/${id}`, { headers: { 'Content-Type': 'application/json' } });
+      if (!res.ok) throw new Error('Failed to fetch detail');
+      const data = await res.json();
+      setDetail(data);
+      setDetailOpen(true);
+    } catch (e) {
+      alert('Failed to load detail');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -93,7 +110,7 @@ export default function Dashboard() {
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case "present":
+      case "on_time":
         return <Badge className="bg-green-100 text-green-800">On Time</Badge>;
       case "late":
         return <Badge className="bg-orange-100 text-orange-800">Late</Badge>;
@@ -102,7 +119,7 @@ export default function Dashboard() {
       case "early_departure":
         return <Badge className="bg-yellow-100 text-yellow-800">Early Leave</Badge>;
       default:
-        return <Badge variant="secondary">{status}</Badge>;
+        return <Badge variant="secondary">{status || 'Unknown'}</Badge>;
     }
   };
 
@@ -165,27 +182,28 @@ export default function Dashboard() {
     }
   ];
 
-  // Mock data cho biểu đồ
-  const weeklyAttendanceData = [
-    { day: 'T2', current: 85, previous: 90 },
-    { day: 'T3', current: 92, previous: 88 },
-    { day: 'T4', current: 78, previous: 85 },
-    { day: 'T5', current: 95, previous: 80 },
-    { day: 'T6', current: 88, previous: 92 },
-    { day: 'T7', current: 75, previous: 70 },
-    { day: 'CN', current: 45, previous: 50 }
-  ];
+  const weeklyAttendanceData = (series.current || []).map((pt, idx) => ({
+    day: pt.label,
+    current: pt.value,
+    previous: series.previous?.[idx]?.value ?? 0,
+  }));
+
+  const barWeekData = (weeklySeries.current || []).map((pt) => ({
+    day: pt.label,
+    current: pt.value,
+  }));
 
   // Data points cho biểu đồ line
-  const lineChartData = [
-    { x: 50, currentY: 120, prevY: 100, day: 'T2', current: 85, previous: 90 },
-    { x: 100, currentY: 100, prevY: 90, day: 'T3', current: 92, previous: 88 },
-    { x: 150, currentY: 110, prevY: 95, day: 'T4', current: 78, previous: 85 },
-    { x: 200, currentY: 80, prevY: 70, day: 'T5', current: 95, previous: 80 },
-    { x: 250, currentY: 85, prevY: 75, day: 'T6', current: 88, previous: 92 },
-    { x: 300, currentY: 75, prevY: 65, day: 'T7', current: 75, previous: 70 },
-    { x: 350, currentY: 100, prevY: 85, day: 'CN', current: 45, previous: 50 }
-  ];
+  const totalPoints = weeklyAttendanceData.length || 1;
+  const step = totalPoints > 1 ? 300 / (totalPoints - 1) : 0; // spread across 50..350
+  const lineChartData = weeklyAttendanceData.map((item, i) => ({
+    x: 50 + i * step,
+    currentY: Math.max(0, 150 - item.current),
+    prevY: Math.max(0, 150 - item.previous),
+    day: item.day,
+    current: item.current,
+    previous: item.previous,
+  }));
 
   const handleMouseMove = (e, data) => {
     setTooltipPosition({
@@ -200,6 +218,7 @@ export default function Dashboard() {
   };
 
   return (
+    <>
     <div>
       {/* Date Header */}
       <div className="mb-6 flex items-center justify-between">
@@ -207,10 +226,6 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-gray-800">Today:</h2>
           <p className="text-sm text-gray-600">{currentDate}</p>
         </div>
-        <Button className="bg-primary text-white hover:bg-blue-600">
-          <i className="fas fa-eye mr-2"></i>
-          View Attendance
-        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -265,7 +280,17 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="text-green-600 text-sm">
-                -10% less than yesterday
+                {chartPeriod === 'daily' && (
+                  <>
+                    {stats?.onTimeChange > 0 ? `+${stats.onTimeChange}%` : `${stats?.onTimeChange || 0}%`} less than yesterday
+                  </>
+                )}
+                {chartPeriod === 'weekly' && (
+                  <>Week-over-week trend</>
+                )}
+                {chartPeriod === 'monthly' && (
+                  <>Month-to-date trend</>
+                )}
               </div>
             </div>
             
@@ -275,7 +300,7 @@ export default function Dashboard() {
                 fill="none"
                 stroke="#8b5cf6"
                 strokeWidth="3"
-                points="50,120 100,100 150,110 200,80 250,85 300,75 350,100"
+                 points={lineChartData.map(p => `${p.x},${p.currentY}`).join(' ')}
                 className={`transition-all duration-2000 ${lineAnimation ? 'opacity-100' : 'opacity-0'}`}
                 style={{
                   strokeDasharray: lineAnimation ? 'none' : '0 1000',
@@ -290,7 +315,7 @@ export default function Dashboard() {
                 stroke="#9ca3af"
                 strokeWidth="2"
                 strokeDasharray="5,5"
-                points="50,100 100,90 150,95 200,70 250,75 300,65 350,85"
+                 points={lineChartData.map(p => `${p.x},${p.prevY}`).join(' ')}
                 className={`transition-all duration-2000 delay-500 ${lineAnimation ? 'opacity-100' : 'opacity-0'}`}
                 style={{
                   strokeDasharray: lineAnimation ? '5,5' : '0 1000',
@@ -331,16 +356,22 @@ export default function Dashboard() {
             </svg>
             
             <div className="flex justify-between text-xs text-gray-500 mt-2">
-              <span>T2</span><span>T3</span><span>T4</span><span>T5</span><span>T6</span><span>T7</span><span>CN</span>
+              {weeklyAttendanceData.map((item, idx) => {
+                const labelStep = Math.max(1, Math.ceil((weeklyAttendanceData.length || 1) / 7));
+                const show = idx % labelStep === 0 || idx === weeklyAttendanceData.length - 1;
+                return <span key={`${item.day}-${idx}`}>{show ? item.day : ''}</span>;
+              })}
             </div>
           </div>
         </div>
 
         {/* Weekly Attendance Bar Chart - Biểu đồ 2 */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-gray-800">Weekly Attendance</h3>
-            <span className="text-sm text-gray-600">Current Week</span>
+            <span className="text-sm text-gray-600">Current Week • Average attendance rate: {(
+              barWeekData.reduce((acc, x) => acc + (x.current || 0), 0) / (barWeekData.length || 1)
+            ).toFixed(0)}%</span>
           </div>
           
           {/* Attendance rate legend */}
@@ -377,7 +408,7 @@ export default function Dashboard() {
               ))}
             </div>
             
-            {weeklyAttendanceData.map((item, index) => {
+            {barWeekData.map((item, index) => {
               const height = `${(item.current / 100) * 100}%`;
               let barColor = 'bg-red-500'; // <70%
               if (item.current >= 90) barColor = 'bg-green-500';
@@ -424,30 +455,34 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Recent Attendance and Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Recent Attendance Table */}
-        <div className="lg:col-span-2 bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+      {/* Recent Attendance */}
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-8">
+        {/* Recent Attendance Table - full width */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-gray-800">Recent Attendance</h3>
-            <div className="flex items-center space-x-4">
-              <input 
-                type="text" 
-                placeholder="Search employees..." 
-                className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <Select>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="All Departments" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Departments</SelectItem>
-                  <SelectItem value="engineering">Engineering</SelectItem>
-                  <SelectItem value="hr">Human Resources</SelectItem>
-                  <SelectItem value="marketing">Marketing</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex items-center space-x-4">
+            <input 
+              type="text" 
+              placeholder="Search employees..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="All Departments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.department_id} value={String(dept.department_id)}>
+                    {dept.department_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           </div>
           
           <div className="overflow-x-auto">
@@ -463,8 +498,19 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {attendanceRecords.slice(0, 5).map((record, index) => {
-                  const employee = employees.find(emp => emp.id === record.employeeId);
+                {attendanceRecords
+                  .filter((record) => {
+                    const matchesSearch = (record.fullName || "")
+                      .toLowerCase()
+                      .includes(searchTerm.toLowerCase()) ||
+                      String(record.employeeId || "").includes(searchTerm.trim());
+                    const matchesDept =
+                      departmentFilter === "all" ||
+                      String(record.departmentId || "") === String(departmentFilter);
+                    return matchesSearch && matchesDept;
+                  })
+                  .map((record, index) => {
+                  const employee = employees.find(emp => String(emp.employeeId) === String(record.employeeId));
                   return (
                     <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-2">
@@ -473,17 +519,17 @@ export default function Dashboard() {
                             <i className="fas fa-user text-gray-600 text-xs"></i>
                           </div>
                           <div>
-                            <div className="font-medium text-gray-900">{employee?.fullName || 'N/A'}</div>
-                            <div className="text-xs text-gray-500">{employee?.employeeId || 'N/A'}</div>
+                            <div className="font-medium text-gray-900">{employee?.fullName || record.fullName || 'N/A'}</div>
+                            <div className="text-xs text-gray-500">{employee?.employeeId || record.employeeId || 'N/A'}</div>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-sm text-gray-600">Unassigned</td>
+                      <td className="py-3 px-2 text-sm text-gray-600">{record.departmentName || employee?.department?.name || 'Unassigned'}</td>
                       <td className="py-3 px-2 text-sm text-gray-900">{record.checkIn ? new Date(record.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--'}</td>
                       <td className="py-3 px-2 text-sm text-gray-900">{record.checkOut ? new Date(record.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '--'}</td>
                       <td className="py-3 px-2">{getStatusBadge(record.status)}</td>
                       <td className="py-3 px-2">
-                        <Button variant="ghost" size="sm" className="text-primary">
+                        <Button variant="ghost" size="sm" className="text-primary" onClick={() => openDetail(record.id)}>
                           Details
                         </Button>
                       </td>
@@ -495,13 +541,14 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-            <span>Showing 1-5 of {attendanceRecords.length} employees</span>
+            <span>Showing {(attendancePage - 1) * pageSize + 1}-{Math.min(attendancePage * pageSize, attendanceTotal)} of {attendanceTotal} records</span>
             <div className="flex space-x-1">
-              <Button variant="outline" size="sm">Previous</Button>
-              <Button size="sm" className="bg-primary text-white">1</Button>
-              <Button variant="outline" size="sm">2</Button>
-              <Button variant="outline" size="sm">3</Button>
-              <Button variant="outline" size="sm">Next</Button>
+              <Button variant="outline" size="sm" onClick={() => setAttendancePage((p) => Math.max(1, p - 1))} disabled={attendancePage === 1}>Previous</Button>
+              <Button size="sm" className="bg-primary text-white">{attendancePage}</Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (attendancePage < totalPages) setAttendancePage(attendancePage + 1);
+                else alert('No more data');
+              }}>Next</Button>
             </div>
           </div>
         </div>
@@ -559,5 +606,25 @@ export default function Dashboard() {
       </div>
 
     </div>
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Attendance Detail</DialogTitle>
+          </DialogHeader>
+          {detail && (
+            <div className="space-y-2 text-sm">
+              <div><strong>Employee:</strong> {detail.user.fullName} (#{detail.user.id})</div>
+              <div><strong>Email:</strong> {detail.user.email}</div>
+              <div><strong>Department:</strong> {detail.user.departmentName || 'Unassigned'}</div>
+              <div><strong>Check In:</strong> {detail.checkIn ? new Date(detail.checkIn).toLocaleString() : '--'}</div>
+              <div><strong>Check Out:</strong> {detail.checkOut ? new Date(detail.checkOut).toLocaleString() : '--'}</div>
+              <div><strong>Status:</strong> {detail.status}</div>
+              <div><strong>Record Date:</strong> {detail.recordDate}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

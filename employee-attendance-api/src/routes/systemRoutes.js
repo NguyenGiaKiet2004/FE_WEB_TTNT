@@ -1,0 +1,18 @@
+const express = require('express');
+const router = express.Router();
+const systemController = require('../controllers/systemController');
+const { requireAdminAccess } = require('../middleware/auth');
+
+// GET: /api/system/configs - Lấy tất cả cấu hình hệ thống
+router.get('/configs', systemController.getSystemConfigs);
+
+// PUT: /api/system/configs/:key - Cập nhật cấu hình (Admin only)
+router.put('/configs/:key', requireAdminAccess, systemController.updateSystemConfig);
+
+// POST: /api/system/configs/initialize - Khởi tạo cấu hình mặc định (Admin only)
+router.post('/configs/initialize', requireAdminAccess, systemController.initializeSystemConfigs);
+
+// GET: /api/system/configs/test - Test route
+router.get('/configs/test', systemController.testSystemConfigs);
+
+module.exports = router;

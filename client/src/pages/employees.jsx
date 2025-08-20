@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api-config";
 import AddEmployeeModal from "@/components/modals/add-employee-modal";
 import EditEmployeeModal from "@/components/modals/edit-employee-modal";
 
 export default function Employees() {
+  const { toast } = useToast();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -16,14 +19,31 @@ export default function Employees() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  const { data: employees = [], isLoading } = useQuery({
-    queryKey: ["/api/employees"],
+  const { data: employeesResponse, isLoading } = useQuery({
+    queryKey: ["/api/employees", currentPage, pageSize],
+    queryFn: async () => {
+      const response = await fetch(`http://localhost:3000/api/employees?page=${currentPage}&limit=${pageSize}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch employees');
+      }
+      const data = await response.json();
+      console.log('✅ Employees Response:', data);
+      return data;
+    },
   });
 
-  const { data: departments = [] } = useQuery({
+  const employees = employeesResponse?.employees || [];
+  const pagination = employeesResponse?.pagination || {};
+
+  const { data: departmentsResponse } = useQuery({
     queryKey: ["/api/departments"],
   });
+  const departments = departmentsResponse?.departments || [];
 
   const { data: roles = [] } = useQuery({
     queryKey: ["/api/roles"],
@@ -31,15 +51,38 @@ export default function Employees() {
 
   const deleteEmployeeMutation = useMutation({
     mutationFn: async (id) => {
-      const response = await fetch(`/api/employees/${id}`, {
-        method: "DELETE",
+      // Use apiRequest helper which handles Vite proxy and auth headers automatically
+      return await apiRequest(`/employees/${id}`, {
+        method: 'DELETE'
       });
-      if (!response.ok) throw new Error("Failed to delete employee");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      
+      // Reset to first page if current page becomes empty after deletion
+      if (employees.length === 1 && currentPage > 1) {
+        setCurrentPage(prev => Math.max(1, prev - 1));
+      }
+      
+      toast({
+        title: "Success",
+        description: "Employee deleted successfully",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, departmentFilter, roleFilter, statusFilter]);
 
   const filteredEmployees = employees.filter(employee => {
     const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -111,7 +154,7 @@ export default function Employees() {
             <SelectContent>
               <SelectItem value="all">All Departments</SelectItem>
               {departments.map(dept => (
-                <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                <SelectItem key={dept.department_id} value={dept.department_name}>{dept.department_name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -187,7 +230,7 @@ export default function Employees() {
                       {employee.role?.name || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant={employee.status === "active" ? "success" : "secondary"}>
+                      <Badge variant={employee.status === "active" ? "default" : "secondary"}>
                         {employee.status}
                       </Badge>
                     </td>
@@ -213,11 +256,20 @@ export default function Employees() {
                         <i className="fas fa-edit"></i>
                       </button>
                       <button 
-                        className="text-red-600 hover:text-red-800"
-                        onClick={() => deleteEmployeeMutation.mutate(employee.id)}
+                        className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                        onClick={() => {
+                          if (window.confirm(`Are you sure you want to delete ${employee.name}? This action cannot be undone.`)) {
+                            deleteEmployeeMutation.mutate(employee.id);
+                          }
+                        }}
                         disabled={deleteEmployeeMutation.isPending}
+                        title={deleteEmployeeMutation.isPending ? "Deleting..." : "Delete employee"}
                       >
-                        <i className="fas fa-trash"></i>
+                        {deleteEmployeeMutation.isPending ? (
+                          <i className="fas fa-spinner fa-spin"></i>
+                        ) : (
+                          <i className="fas fa-trash"></i>
+                        )}
                       </button>
                     </td>
                   </tr>
@@ -229,13 +281,81 @@ export default function Employees() {
         
         {/* Pagination */}
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            Showing {filteredEmployees.length} of {employees.length} employees
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-gray-500">
+              Showing {((pagination.page - 1) * pagination.pageSize) + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} employees
+            </div>
+            
+            {/* Page Size Selector */}
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-500">Show:</span>
+              <Select value={pageSize.toString()} onValueChange={(value) => {
+                setPageSize(parseInt(value));
+                setCurrentPage(1); // Reset to first page when changing page size
+              }}>
+                <SelectTrigger className="w-20 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="flex space-x-2">
-            <button className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Previous</button>
-            <button className="px-3 py-1 text-sm bg-primary text-white rounded">1</button>
-            <button className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded">Next</button>
+          
+          <div className="flex items-center space-x-2">
+            {/* Previous Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={!pagination.hasPrev || currentPage === 1}
+              className="px-3 py-1"
+            >
+              Previous
+            </Button>
+            
+            {/* Page Numbers */}
+            <div className="flex space-x-1">
+              {Array.from({ length: Math.min(5, pagination.totalPages || 1) }, (_, i) => {
+                let pageNum;
+                if (pagination.totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= pagination.totalPages - 2) {
+                  pageNum = pagination.totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className="px-3 py-1 min-w-[40px]"
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            
+            {/* Next Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(pagination.totalPages || 1, prev + 1))}
+              disabled={!pagination.hasNext || currentPage === (pagination.totalPages || 1)}
+              className="px-3 py-1"
+            >
+              Next
+            </Button>
           </div>
         </div>
       </div>

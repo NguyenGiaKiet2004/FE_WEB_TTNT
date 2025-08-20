@@ -1,20 +1,43 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import StatsCard from "@/components/dashboard/stats-card";
+import { apiRequest } from "@/lib/api-config";
 
 export default function Reports() {
+  const [reportPeriod, setReportPeriod] = useState("monthly");
+  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const [reportType, setReportType] = useState("attendance");
+
   const { data: stats } = useQuery({
     queryKey: ["/api/dashboard/stats"],
+    queryFn: async () => {
+      const data = await apiRequest('/dashboard/stats');
+      console.log('✅ Dashboard Stats Response:', data);
+      return data;
+    },
   });
 
   const { data: departments = [] } = useQuery({
     queryKey: ["/api/departments"],
+    queryFn: async () => {
+      const data = await apiRequest('/departments');
+      console.log('✅ Departments Response:', data);
+      return data;
+    },
   });
 
-  const { data: attendanceRecords = [] } = useQuery({
+  const { data: attendanceResponse } = useQuery({
     queryKey: ["/api/attendance"],
+    queryFn: async () => {
+      const data = await apiRequest('/attendance');
+      console.log('✅ Attendance Response:', data);
+      return data;
+    },
   });
+
+  const attendanceRecords = attendanceResponse?.records || [];
 
   return (
     <div>
@@ -35,7 +58,7 @@ export default function Reports() {
       {/* Report Filters */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Select defaultValue="monthly">
+          <Select value={reportPeriod} onValueChange={setReportPeriod}>
             <SelectTrigger>
               <SelectValue placeholder="Report Period" />
             </SelectTrigger>
@@ -46,18 +69,20 @@ export default function Reports() {
               <SelectItem value="yearly">Yearly</SelectItem>
             </SelectContent>
           </Select>
-          <Select defaultValue="all">
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
             <SelectTrigger>
               <SelectValue placeholder="Department" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Departments</SelectItem>
               {departments.map(dept => (
-                <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                <SelectItem key={dept.department_id} value={dept.department_id}>
+                  {dept.department_name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Select defaultValue="attendance">
+          <Select value={reportType} onValueChange={setReportType}>
             <SelectTrigger>
               <SelectValue placeholder="Report Type" />
             </SelectTrigger>
@@ -112,10 +137,12 @@ export default function Reports() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Department-wise Attendance</h3>
           <div className="space-y-4">
             {departments.map(dept => (
-              <div key={dept.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div key={dept.department_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
-                  <div className="font-medium text-gray-900">{dept.name}</div>
-                  <div className="text-sm text-gray-500">{dept.employeeCount} employees</div>
+                  <div className="font-medium text-gray-900">{dept.department_name}</div>
+                  <div className="text-sm text-gray-500">
+                    {attendanceRecords.filter(record => record.departmentName === dept.department_name).length} records
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-lg font-bold text-gray-900">
@@ -136,21 +163,21 @@ export default function Reports() {
               <div key={record.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                 <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center">
                   <span className="text-sm font-medium text-gray-600">
-                    {record.employee?.name?.split(' ').map(n => n[0]).join('').toUpperCase() || "N/A"}
+                    {record.fullName?.split(' ').map(n => n[0]).join('').toUpperCase() || "N/A"}
                   </span>
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-medium text-gray-900">
-                    {record.employee?.name || "Unknown Employee"}
+                    {record.fullName || "Unknown Employee"}
                   </div>
                   <div className="text-xs text-gray-500">
                     {record.status === "present" ? "Checked in" : 
                      record.status === "late" ? "Late arrival" : 
-                     record.status} at {record.checkIn || "N/A"}
+                     record.status} at {record.checkIn ? new Date(record.checkIn).toLocaleTimeString() : "N/A"}
                   </div>
                 </div>
                 <div className="text-xs text-gray-400">
-                  {new Date(record.date).toLocaleDateString()}
+                  {new Date(record.recordDate).toLocaleDateString()}
                 </div>
               </div>
             ))}

@@ -6,8 +6,8 @@ interface ApiError extends Error {
   data?: any;
 }
 
-// API base URL
-const API_BASE_URL = 'http://localhost:3001';
+// API base URL (switch to employee-attendance-api on 3000)
+const API_BASE_URL = 'http://localhost:3000';
 
 // Helper function for API requests
 export const apiRequest = async (url: string, options: RequestInit = {}) => {
@@ -17,6 +17,9 @@ export const apiRequest = async (url: string, options: RequestInit = {}) => {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(typeof window !== 'undefined' && localStorage.getItem('auth-data')
+        ? { 'Authorization': `Bearer ${JSON.parse(localStorage.getItem('auth-data') as string).token}` }
+        : {}),
       ...options.headers,
     },
     credentials: 'include', // Include cookies for session management
@@ -52,6 +55,7 @@ export const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      queryFn: getQueryFn,
     },
   },
 });

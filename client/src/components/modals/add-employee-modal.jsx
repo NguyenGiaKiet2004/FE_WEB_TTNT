@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiRequest } from "@/lib/api-config";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -12,31 +13,26 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: "",
-    employeeId: "",
     email: "",
-    phone: "",
+    password: "",
+    confirmPassword: "",
+    phoneNumber: "",
     departmentId: "",
     roleId: "",
-    status: "active",
-    faceImages: []
+    status: "active"
   });
 
   const createEmployeeMutation = useMutation({
-    mutationFn: async (employeeData) => {
-      const response = await fetch("/api/employees", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(employeeData),
-      });
+              mutationFn: async (employeeData) => {
+       // apiRequest handles auth automatically
+       console.log('🔧 Sending employee data to backend:', employeeData);
       
-      if (!response.ok) {
-        throw new Error("Failed to create employee");
-      }
-      
-      return response.json();
-    },
+       // Use apiRequest helper which handles Vite proxy and auth headers automatically
+       return await apiRequest('/employees', {
+         method: 'POST',
+         body: JSON.stringify(employeeData)
+       });
+     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -47,13 +43,13 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
       onClose();
       setFormData({
         name: "",
-        employeeId: "",
         email: "",
-        phone: "",
+        password: "",
+        confirmPassword: "",
+        phoneNumber: "",
         departmentId: "",
         roleId: "",
-        status: "active",
-        faceImages: []
+        status: "active"
       });
     },
     onError: (error) => {
@@ -68,7 +64,7 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.employeeId || !formData.email || !formData.departmentId || !formData.roleId) {
+    if (!formData.name || !formData.email || !formData.departmentId || !formData.roleId) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -77,7 +73,42 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
       return;
     }
 
-    createEmployeeMutation.mutate(formData);
+    // Validate password match
+    if (formData.password !== formData.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate password strength
+    if (formData.password.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Remove confirmPassword from form data and map to backend expected structure
+    const { confirmPassword, ...employeeData } = formData;
+    
+    // Map frontend field names to backend expected names
+    const backendData = {
+      name: employeeData.name,
+      email: employeeData.email,
+      password: employeeData.password,
+      phoneNumber: employeeData.phoneNumber,
+      departmentId: employeeData.departmentId,
+      roleId: employeeData.roleId,
+      status: employeeData.status
+    };
+    
+    console.log('🔧 Sending employee data to backend:', backendData);
+    createEmployeeMutation.mutate(backendData);
   };
 
   const handleInputChange = (field, value) => {
@@ -102,15 +133,7 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
                 id="name"
                 value={formData.name}
                 onChange={(e) => handleInputChange("name", e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="employeeId">Employee ID *</Label>
-              <Input
-                id="employeeId"
-                value={formData.employeeId}
-                onChange={(e) => handleInputChange("employeeId", e.target.value)}
+                placeholder="Enter full name"
                 required
               />
             </div>
@@ -121,6 +144,29 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
+                placeholder="Enter email address"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="password">Password *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => handleInputChange("password", e.target.value)}
+                placeholder="Enter password (min 6 characters)"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="confirmPassword">Confirm Password *</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                placeholder="Confirm password"
                 required
               />
             </div>
@@ -129,57 +175,47 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
               <Input
                 id="phone"
                 type="tel"
-                value={formData.phone}
-                onChange={(e) => handleInputChange("phone", e.target.value)}
+                value={formData.phoneNumber}
+                onChange={(e) => handleInputChange("phoneNumber", e.target.value)}
+                placeholder="Enter phone number (optional)"
               />
             </div>
             <div>
-              <Label>Department *</Label>
-              <Select value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
+              <Label htmlFor="departmentSelect">Department *</Label>
+              <Select id="departmentSelect" value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Department" />
                 </SelectTrigger>
                 <SelectContent>
                   {departments.map(dept => (
-                    <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                    <SelectItem key={dept.department_id} value={dept.department_name}>{dept.department_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Role *</Label>
-              <Select value={formData.roleId} onValueChange={(value) => handleInputChange("roleId", value)}>
+              <Label htmlFor="roleSelect">Role *</Label>
+              <Select id="roleSelect" value={formData.roleId} onValueChange={(value) => handleInputChange("roleId", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select Role" />
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map(role => (
-                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                    <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           
-          {/* Face Images Upload */}
+          {/* Face Images Upload - Placeholder for future implementation */}
           <div>
-            <Label>Face Recognition Images *</Label>
-            <p className="text-sm text-gray-500 mb-4">Upload at least 2 clear face images for accurate recognition</p>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <i className="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-4"></i>
-              <p className="text-gray-600 mb-2">Drag and drop images here or click to browse</p>
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  // Handle file upload logic here
-                  const files = Array.from(e.target.files);
-                  console.log("Files selected:", files);
-                }}
-              />
-              <Button type="button" variant="outline">Choose Files</Button>
+            <Label htmlFor="faceImages">Face Recognition Images</Label>
+            <p className="text-sm text-gray-500 mb-4">Face recognition setup will be available in future updates</p>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-gray-50">
+              <i className="fas fa-camera text-3xl text-gray-400 mb-4"></i>
+              <p className="text-gray-600 mb-2">Face recognition feature coming soon</p>
+              <p className="text-xs text-gray-500">This feature will allow employees to use facial recognition for attendance</p>
             </div>
           </div>
           

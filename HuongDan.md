@@ -101,29 +101,6 @@ Frontend sẽ chạy tại: `http://localhost:5000`
 - **AttendanceRecords**: Bản ghi chấm công
 - **SystemConfigs**: Cấu hình hệ thống
 
-### Schema cơ bản
-
-```sql
-CREATE TABLE Users (
-  user_id INT PRIMARY KEY AUTO_INCREMENT,
-  full_name VARCHAR(255) NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  role ENUM('super_admin', 'hr_manager', 'employee') NOT NULL,
-  department_id INT,
-  employee_id INT,
-  phone_number VARCHAR(20),
-  address TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE Departments (
-  department_id INT PRIMARY KEY AUTO_INCREMENT,
-  department_name VARCHAR(255) NOT NULL,
-  description TEXT
-);
-```
-
 ## API Endpoints
 
 ### Authentication

@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const departmentController = require('../controllers/departmentController');
-const { requireAdminAccess } = require('../middleware/auth');
+const { requireAdminAccess, requireAuth } = require('../middleware/auth');
 
-// GET: /api/departments - Lấy tất cả phòng ban
+// GET: /api/departments - Lấy tất cả phòng ban (public cho trang đăng ký)
 router.get('/', departmentController.getAllDepartments);
 
 // POST: /api/departments - Tạo phòng ban 

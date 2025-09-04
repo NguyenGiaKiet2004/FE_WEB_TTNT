@@ -7,10 +7,10 @@ exports.findByEmail = async (email) => {
 };
 
 // Hàm tạo người dùng mới
-exports.create = async (full_name, email, password_hash, role, department_id) => {
+exports.create = async (full_name, email, password_hash, role, department_id, employee_id = null, phone_number = null, address = null) => {
   const [result] = await pool.query(
-    `INSERT INTO Users (full_name, email, password_hash, role, department_id) VALUES (?, ?, ?, ?, ?)`,
-    [full_name, email, password_hash, role, department_id]
+    `INSERT INTO Users (full_name, email, password_hash, role, department_id, employee_id, phone_number, address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [full_name, email, password_hash, role, department_id, employee_id, phone_number, address]
   );
   return result.insertId;
 };

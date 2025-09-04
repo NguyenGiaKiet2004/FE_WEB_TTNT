@@ -7,7 +7,7 @@ const connection = await mysql.createConnection({
   host: 'localhost',
   user: 'root',
   password: '', // Default XAMPP MySQL password is empty
-  database: 'face_attendance_system',
+  database: 'smart_attendance',
   port: 3306
 });
 

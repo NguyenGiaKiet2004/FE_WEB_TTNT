@@ -9,9 +9,12 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/api-config";
 import AddEmployeeModal from "@/components/modals/add-employee-modal";
 import EditEmployeeModal from "@/components/modals/edit-employee-modal";
+import { useAuthState } from "@/hooks/useAuth";
 
 export default function Employees() {
   const { toast } = useToast();
+  const { role } = useAuthState();
+  const isHR = role === 'hr_manager';
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -27,11 +30,7 @@ export default function Employees() {
   const { data: employeesResponse, isLoading } = useQuery({
     queryKey: ["/api/employees", currentPage, pageSize],
     queryFn: async () => {
-      const response = await fetch(`http://localhost:3000/api/employees?page=${currentPage}&limit=${pageSize}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch employees');
-      }
-      const data = await response.json();
+      const data = await apiRequest(`/employees?page=${currentPage}&limit=${pageSize}`);
       console.log('✅ Employees Response:', data);
       return data;
     },
@@ -44,6 +43,7 @@ export default function Employees() {
     queryKey: ["/api/departments"],
   });
   const departments = departmentsResponse?.departments || [];
+  const uniqueDepartments = Array.from(new Map((departments || []).map(d => [d.department_id, d])).values());
 
   const { data: roles = [] } = useQuery({
     queryKey: ["/api/roles"],
@@ -87,7 +87,8 @@ export default function Employees() {
   const filteredEmployees = employees.filter(employee => {
     const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
+                         (employee.employee_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (employee.employeeId || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesDepartment = departmentFilter === "all" || 
                              employee.department?.name === departmentFilter;
@@ -132,7 +133,9 @@ export default function Employees() {
         <h2 className="text-xl font-semibold text-gray-800">Employee Management</h2>
         <Button 
           onClick={() => setShowAddModal(true)}
-          className="bg-primary text-white hover:bg-blue-600"
+          className={`bg-primary text-white hover:bg-blue-600 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
+          disabled={isHR}
+          title={isHR ? 'Only Super Admin' : ''}
         >
           <i className="fas fa-plus mr-2"></i>
           Add Employee
@@ -152,9 +155,9 @@ export default function Employees() {
               <SelectValue placeholder="All Departments" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map(dept => (
-                <SelectItem key={dept.department_id} value={dept.department_name}>{dept.department_name}</SelectItem>
+              <SelectItem key="dept-all" value="all">All Departments</SelectItem>
+              {uniqueDepartments.map(dept => (
+                <SelectItem key={`dept-${dept.department_id}`} value={dept.department_name}>{dept.department_name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -165,7 +168,7 @@ export default function Employees() {
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
               {roles.map(role => (
-                <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                <SelectItem key={`role-${role.id}`} value={role.name}>{role.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -192,6 +195,7 @@ export default function Employees() {
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee ID</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Face Images</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -215,19 +219,22 @@ export default function Employees() {
                           </span>
                         </div>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{employee.name}</div>
-                          <div className="text-sm text-gray-500">{employee.email}</div>
+                          <div className="text-sm font-medium text-gray-900 max-w-[220px] truncate" title={employee.name}>{employee.name}</div>
+                          <div className="text-sm text-gray-500 max-w-[260px] truncate" title={employee.email}>{employee.email}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {employee.employeeId}
+                      {employee.employee_id || employee.employeeId || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {employee.department?.name || "N/A"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {employee.role?.name || "N/A"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 max-w-[260px] truncate" title={employee.address || 'N/A'}>
+                      {employee.address || 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Badge variant={employee.status === "active" ? "default" : "secondary"}>
@@ -247,23 +254,27 @@ export default function Employees() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                       <button 
-                        className="text-primary hover:text-blue-600"
+                        className={`text-primary hover:text-blue-600 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
                         onClick={() => {
+                          if (isHR) return;
                           setSelectedEmployee(employee);
                           setShowEditModal(true);
                         }}
+                        disabled={isHR}
+                        title={isHR ? 'Only Super Admin' : 'Edit employee'}
                       >
                         <i className="fas fa-edit"></i>
                       </button>
                       <button 
-                        className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                        className={`text-red-600 hover:text-red-800 disabled:opacity-50 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
                         onClick={() => {
+                          if (isHR) return;
                           if (window.confirm(`Are you sure you want to delete ${employee.name}? This action cannot be undone.`)) {
                             deleteEmployeeMutation.mutate(employee.id);
                           }
                         }}
-                        disabled={deleteEmployeeMutation.isPending}
-                        title={deleteEmployeeMutation.isPending ? "Deleting..." : "Delete employee"}
+                        disabled={isHR || deleteEmployeeMutation.isPending}
+                        title={isHR ? 'Only Super Admin' : (deleteEmployeeMutation.isPending ? "Deleting..." : "Delete employee")}
                       >
                         {deleteEmployeeMutation.isPending ? (
                           <i className="fas fa-spinner fa-spin"></i>

@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function NotificationsDropdown() {
   const { data } = useQuery({
-    queryKey: ["/api/notifications"],
+    queryKey: ["/api/dashboard/notifications"],
   });
   const notifications = (data?.notifications || []).map(n => ({
     ...n,

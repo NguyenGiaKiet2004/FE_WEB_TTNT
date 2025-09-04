@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const employeeController = require('../controllers/employeeController');
-const { requireAdminAccess } = require('../middleware/auth');
+const { requireAdminAccess, requireAuth } = require('../middleware/auth');
 
 // GET: /api/employees - Lấy tất cả nhân viên
-router.get('/', employeeController.getAllEmployees);
+router.get('/', requireAuth, employeeController.getAllEmployees);
 
 // GET: /api/employees/:id - Lấy thông tin 1 nhân viên
-router.get('/:id', employeeController.getEmployeeById);
+router.get('/:id', requireAuth, employeeController.getEmployeeById);
 
 // POST: /api/employees - Tạo nhân viên (Admin only)
 router.post('/', requireAdminAccess, employeeController.createEmployee);

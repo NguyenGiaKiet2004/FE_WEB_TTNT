@@ -17,7 +17,9 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
     password: "",
     confirmPassword: "",
     phoneNumber: "",
-    departmentId: "",
+    address: "",
+    departmentId: "", // backend expects department name string
+    departmentSelectValue: "", // UI select raw value `${id}|${name}`
     roleId: "",
     status: "active"
   });
@@ -46,6 +48,8 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
         email: "",
         password: "",
         confirmPassword: "",
+        address: "",
+        employeeId: "",
         phoneNumber: "",
         departmentId: "",
         roleId: "",
@@ -101,7 +105,9 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
       name: employeeData.name,
       email: employeeData.email,
       password: employeeData.password,
+      // employee_id được backend tự tính dựa theo department & role
       phoneNumber: employeeData.phoneNumber,
+      address: employeeData.address || null,
       departmentId: employeeData.departmentId,
       roleId: employeeData.roleId,
       status: employeeData.status
@@ -117,6 +123,8 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
       [field]: value
     }));
   };
+
+  const uniqueDepartments = Array.from(new Map((departments || []).map(d => [d.department_id, d])).values());
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -170,6 +178,7 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
                 required
               />
             </div>
+            {/* Employee ID removed - backend auto-assigns based on department & role */}
             <div>
               <Label htmlFor="phone">Phone Number</Label>
               <Input
@@ -181,14 +190,32 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
               />
             </div>
             <div>
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => handleInputChange("address", e.target.value)}
+                placeholder="Enter address (optional)"
+              />
+            </div>
+            <div>
               <Label htmlFor="departmentSelect">Department *</Label>
-              <Select id="departmentSelect" value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
+              <Select id="departmentSelect" value={formData.departmentSelectValue} onValueChange={(value) => {
+                // value format: `${id}|${name}` to keep it unique for Select, but we store name for backend
+                const parts = String(value).split('|');
+                const name = parts.length > 1 ? parts.slice(1).join('|') : value;
+                setFormData(prev => ({
+                  ...prev,
+                  departmentId: name,
+                  departmentSelectValue: value,
+                }));
+              }}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Department" />
+                  <SelectValue placeholder="Select Department">{formData.departmentId || undefined}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map(dept => (
-                    <SelectItem key={dept.department_id} value={dept.department_name}>{dept.department_name}</SelectItem>
+                  {uniqueDepartments.map(dept => (
+                    <SelectItem key={`dept-${dept.department_id}`} value={`${dept.department_id}|${dept.department_name}`}>{dept.department_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -201,7 +228,7 @@ export default function AddEmployeeModal({ isOpen, onClose, departments, roles }
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map(role => (
-                    <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                    <SelectItem key={`role-${role.id}`} value={role.name}>{role.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

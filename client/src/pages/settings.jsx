@@ -8,9 +8,12 @@ import { Slider } from "@/components/ui/slider";
 import { apiRequest } from "@/lib/api-config";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuthState } from "@/hooks/useAuth";
 
 export default function Settings() {
   const { toast } = useToast();
+  const { role } = useAuthState();
+  const isHR = role === 'hr_manager';
   const [formData, setFormData] = useState({
     workStartTime: "08:00",
     workEndTime: "17:00",
@@ -339,6 +342,11 @@ export default function Settings() {
 
   return (
     <div>
+      {isHR && (
+        <div className="mb-4 p-3 rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-800 text-sm">
+          Read-only for HR. Some actions are disabled.
+        </div>
+      )}
       <h2 className="text-xl font-semibold text-gray-800 mb-6">System Settings</h2>
       
       <form onSubmit={handleSubmit}>
@@ -502,13 +510,14 @@ export default function Settings() {
         </div>
 
         <div className="mt-8 flex justify-end space-x-4">
-          <Button type="button" variant="outline" onClick={handleReset}>
+          <Button type="button" variant="outline" onClick={handleReset} disabled={isHR} className={`${isHR ? 'opacity-50 cursor-not-allowed' : ''}`} title={isHR ? 'Only Super Admin' : ''}>
             Reset to Default
           </Button>
           <Button 
             type="submit" 
-            disabled={updateSettingsMutation.isPending}
-            className="bg-primary text-white hover:bg-blue-600"
+            disabled={isHR || updateSettingsMutation.isPending}
+            className={`bg-primary text-white hover:bg-blue-600 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title={isHR ? 'Only Super Admin' : ''}
           >
             {updateSettingsMutation.isPending ? "Saving..." : "Save Settings"}
           </Button>

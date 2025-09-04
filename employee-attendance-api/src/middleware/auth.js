@@ -1,49 +1,36 @@
 const pool = require('../utils/db');
+const jwt = require('jsonwebtoken');
 
-// Middleware kiểm tra quyền super admin hoặc hr manager
-const requireAdminAccess = async (req, res, next) => {
+// Middleware: yêu cầu JWT hợp lệ -> gắn req.user
+const requireAuth = async (req, res, next) => {
   try {
-    // Lấy JWT token từ header Authorization
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ message: 'Authorization token required' });
     }
 
-    const token = authHeader.substring(7); // Xóa prefix 'Bearer '
-    
-    // Hiện tại, tui sẽ sử dụng phương pháp đơn giản
-    // chỉ giải pháp tạm thời nha
-    const userId = req.headers['user-id'] || req.query.userId;
-    
-    console.log('🔐 Auth check - User ID:', userId, 'Headers:', req.headers);
-    console.log('🔐 Token:', token ? 'Present' : 'Missing');
-    console.log('🔐 User ID from header:', req.headers['user-id']);
-    console.log('🔐 User ID from query:', req.query.userId);
-    console.log('🔐 Full request body:', req.body);
-    console.log('🔐 Full request headers:', JSON.stringify(req.headers, null, 2));
-    
-    if (!userId) {
-      return res.status(401).json({ message: 'User ID required' });
+    const token = authHeader.slice(7);
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
     const [rows] = await pool.query(
-      'SELECT role FROM Users WHERE user_id = ?',
-      [userId]
+      'SELECT user_id, email, role, department_id FROM Users WHERE user_id = ? LIMIT 1',
+      [payload.userId]
     );
-
     if (!rows || rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(401).json({ message: 'User no longer exists' });
     }
 
-    const userRole = rows[0].role;
-    console.log('🔐 User role:', userRole);
-
-    // Cho phép super_admin và hr_manager
-    if (!['super_admin', 'hr_manager'].includes(userRole)) {
-      return res.status(403).json({ message: 'Admin access required (Super Admin or HR Manager)' });
-    }
-
-    console.log('✅ Auth successful for role:', userRole);
+    req.user = {
+      userId: rows[0].user_id,
+      email: rows[0].email,
+      role: rows[0].role,
+      departmentId: rows[0].department_id,
+    };
     next();
   } catch (err) {
     console.error('❌ Auth error:', err);
@@ -51,6 +38,24 @@ const requireAdminAccess = async (req, res, next) => {
   }
 };
 
+// Middleware: yêu cầu role thuộc danh sách allowed
+const requireRoles = (allowedRoles = []) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Forbidden: insufficient role' });
+    }
+    next();
+  };
+};
+
+// Shortcut cho admin (super_admin hoặc hr_manager)
+const requireAdminAccess = [requireAuth, requireRoles(['super_admin', 'hr_manager'])];
+
 module.exports = {
-  requireAdminAccess
+  requireAuth,
+  requireRoles,
+  requireAdminAccess,
 };

@@ -19,6 +19,7 @@ export default function Register() {
     confirmPassword: "",
     departmentId: "",
     phoneNumber: "",
+    address: "",
     role: "employee"
   });
   const [error, setError] = useState("");
@@ -39,6 +40,7 @@ export default function Register() {
 
   // Extract departments array from response
   const departments = departmentsResponse?.departments || [];
+  const uniqueDepartments = Array.from(new Map((departments || []).map(d => [d.department_id, d])).values());
 
   const handleChange = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -81,6 +83,7 @@ export default function Register() {
     if (form.phoneNumber && !/^(\+84|84|0)[0-9]{9}$/.test(form.phoneNumber)) {
       newErrors.phoneNumber = 'Invalid phone number';
     }
+    // address optional, no strict validation
     
     if (!form.role) {
       newErrors.role = 'Please select a role';
@@ -116,6 +119,7 @@ export default function Register() {
         password: form.password,
         departmentId: form.departmentId ? parseInt(form.departmentId) : null,
         phoneNumber: form.phoneNumber,
+        address: form.address || null,
         role: form.role
       }),
     });
@@ -129,6 +133,7 @@ export default function Register() {
         confirmPassword: "",
         departmentId: "",
         phoneNumber: "",
+        address: "",
         role: "employee"
       });
     } catch (error) {
@@ -308,10 +313,10 @@ export default function Register() {
                           Failed to load departments
                         </div>
                                              ) : departments && departments.length > 0 ? (
-                         departments
-                           .filter(dept => dept && dept.department_id) // Filter out undefined/null items
+                         uniqueDepartments
+                           .filter(dept => dept && dept.department_id)
                            .map(dept => (
-                             <SelectItem key={dept.department_id} value={dept.department_id.toString()}>
+                             <SelectItem key={`dept-${dept.department_id}`} value={dept.department_id.toString()}>
                                {dept.department_name}
                              </SelectItem>
                            ))
@@ -353,12 +358,12 @@ export default function Register() {
                           <span>HR Manager</span>
                         </div>
                       </SelectItem>
-                      <SelectItem value="employee">
+                      {/* <SelectItem value="employee">
                         <div className="flex items-center space-x-2">
                           <i className="fas fa-user text-green-500"></i>
                           <span>Employee</span>
                         </div>
-                      </SelectItem>
+                      </SelectItem> */}
                     </SelectContent>
                   </Select>
                   {errors.role && (
@@ -382,6 +387,19 @@ export default function Register() {
                   {errors.phoneNumber && (
                     <p className="text-red-300 text-sm mt-1">{errors.phoneNumber}</p>
                   )}
+                </div>
+                <div>
+                  <Label htmlFor="address" className="text-lg text-white font-semibold">Address</Label>
+                  <Input 
+                    id="address"
+                    name="address"
+                    type="text" 
+                    value={form.address} 
+                    onChange={handleChange("address")} 
+                    autoComplete="street-address"
+                    placeholder="Enter address (optional)"
+                    className={`mt-2 text-lg px-5 py-4 placeholder-gray-400 text-white bg-black/40 border-gray-500 focus:bg-black/60`}
+                  />
                 </div>
               </div>
               <Button type="submit" className="w-full text-lg py-3 bg-primary text-white font-bold hover:bg-primary/90" disabled={isPending}>

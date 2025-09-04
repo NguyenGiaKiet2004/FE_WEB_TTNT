@@ -8,7 +8,8 @@ exports.getAllDepartments = async (req, res) => {
         d.department_id, 
         d.department_name, 
         d.created_at,
-        COALESCE(u.total_employees, 0) AS employeeCount
+        COALESCE(u.total_employees, 0) AS employeeCount,
+        m.manager_name
       FROM Departments d
       LEFT JOIN (
         SELECT department_id, COUNT(*) AS total_employees
@@ -16,6 +17,13 @@ exports.getAllDepartments = async (req, res) => {
         WHERE department_id IS NOT NULL AND role != 'super_admin'
         GROUP BY department_id
       ) u ON u.department_id = d.department_id
+      LEFT JOIN (
+        SELECT 
+          u.department_id, 
+          u.full_name AS manager_name
+        FROM Users u
+        WHERE u.employee_id = u.department_id * 10000
+      ) m ON m.department_id = d.department_id
       ORDER BY d.department_name
     `);
     console.log('📋 Available departments (with counts):', rows);

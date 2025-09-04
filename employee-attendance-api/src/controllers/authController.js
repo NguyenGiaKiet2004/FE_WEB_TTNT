@@ -10,6 +10,8 @@ exports.registerUser = async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   const password = req.body.password || '';
   const role = (req.body.role || 'employee').trim();
+  const phone_number = (req.body.phone_number ?? req.body.phoneNumber ?? null) || null;
+  const address = (req.body.address ?? null) || null;
   let department_id = req.body.department_id ?? req.body.departmentId ?? null;
   if (department_id === '' || department_id === undefined) department_id = null;
   if (department_id !== null) {
@@ -30,7 +32,13 @@ exports.registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
 
-    const userId = await userModel.create(full_name, email, password_hash, role, department_id);
+    // Tự động gán employee_id cho HR Manager
+    let employee_id = null;
+    if (role === 'hr_manager' && department_id) {
+      employee_id = department_id * 10000; // HR Manager = department_id * 10000
+    }
+
+    const userId = await userModel.create(full_name, email, password_hash, role, department_id, employee_id, phone_number, address);
 
     res.status(201).json({
       message: "Đăng ký người dùng thành công",

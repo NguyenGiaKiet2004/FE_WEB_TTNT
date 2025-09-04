@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import StatsCard from "@/components/dashboard/stats-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,9 @@ export default function Dashboard() {
   const [attendancePage, setAttendancePage] = useState(1);
   const pageSize = 5;
   const { data: attendanceData } = useQuery({
-    queryKey: ["/api/attendance", { page: attendancePage, limit: pageSize }],
+    queryKey: [
+      `/api/attendance?page=${attendancePage}&limit=${pageSize}`
+    ],
   });
   const attendanceRecords = attendanceData?.records || [];
   const attendanceTotal = attendanceData?.total || 0;
@@ -55,6 +58,7 @@ export default function Dashboard() {
     queryKey: ["/api/departments"],
   });
   const departments = departmentsResponse?.departments || [];
+  const uniqueDepartments = Array.from(new Map((departments || []).map(d => [d.department_id, d])).values());
 
   const currentDate = new Date().toLocaleDateString('en-US', { 
     year: 'numeric', 
@@ -75,9 +79,7 @@ export default function Dashboard() {
 
   const openDetail = async (id) => {
     try {
-      const res = await fetch(`http://localhost:3000/api/attendance/detail/${id}`, { headers: { 'Content-Type': 'application/json' } });
-      if (!res.ok) throw new Error('Failed to fetch detail');
-      const data = await res.json();
+      const data = await apiRequest(`/api/attendance/detail/${id}`);
       setDetail(data);
       setDetailOpen(true);
     } catch (e) {
@@ -474,9 +476,9 @@ export default function Dashboard() {
                 <SelectValue placeholder="All Departments" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept.department_id} value={String(dept.department_id)}>
+                <SelectItem key="dept-all" value="all">All Departments</SelectItem>
+                {uniqueDepartments.map((dept) => (
+                  <SelectItem key={`dept-${dept.department_id}`} value={String(dept.department_id)}>
                     {dept.department_name}
                   </SelectItem>
                 ))}
@@ -519,7 +521,7 @@ export default function Dashboard() {
                             <i className="fas fa-user text-gray-600 text-xs"></i>
                           </div>
                           <div>
-                            <div className="font-medium text-gray-900">{employee?.fullName || record.fullName || 'N/A'}</div>
+                            <div className="font-medium text-gray-900 max-w-[220px] truncate" title={employee?.fullName || record.fullName || 'N/A'}>{employee?.fullName || record.fullName || 'N/A'}</div>
                             <div className="text-xs text-gray-500">{employee?.employeeId || record.employeeId || 'N/A'}</div>
                           </div>
                         </div>

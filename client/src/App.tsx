@@ -12,6 +12,7 @@ import Roles from "@/pages/roles";
 import Attendance from "@/pages/attendance";
 import Reports from "@/pages/reports";
 import Settings from "@/pages/settings";
+import Profile from "@/pages/profile";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import ProtectedRoute from "@/components/auth/protected-route";
@@ -53,6 +54,7 @@ function Router() {
               <Route path="/attendance" component={Attendance} />
               <Route path="/reports" component={Reports} />
               <Route path="/settings" component={Settings} />
+              <Route path="/profile" component={Profile} />
               <Route component={NotFound} />
             </Switch>
           </MainLayout>

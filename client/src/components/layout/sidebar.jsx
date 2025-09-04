@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useAuthState } from "@/hooks/useAuth";
 
 export default function Sidebar() {
   const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { role } = useAuthState();
+  const isHR = role === 'hr_manager';
 
   const navigationItems = [
     {
@@ -60,12 +63,18 @@ export default function Sidebar() {
             )}
             {section.items.map((item) => {
               const isActive = location === item.path || (item.path === "/dashboard" && location === "/");
+              const isDisabledForHR = isHR && ["/employees", "/attendance", "/settings"].includes(item.path);
               return (
                 <Link
                   key={item.path}
                   href={item.path}
-                  className={`sidebar-item ${isActive ? 'active' : ''} ${isCollapsed ? 'justify-center' : ''}`}
-                  title={isCollapsed ? item.name : ''}
+                  className={`sidebar-item ${isActive ? 'active' : ''} ${isCollapsed ? 'justify-center' : ''} ${isDisabledForHR ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title={isDisabledForHR ? 'Only Super Admin' : (isCollapsed ? item.name : '')}
+                  onClick={(e) => {
+                    if (isDisabledForHR) {
+                      e.preventDefault();
+                    }
+                  }}
                 >
                   <i className={`${item.icon} text-lg`}></i>
                   {!isCollapsed && (

@@ -56,7 +56,7 @@ export default function UserProfile() {
         </DropdownMenuTrigger>
         
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuItem className="flex items-center space-x-2">
+          <DropdownMenuItem className="flex items-center space-x-2" onClick={() => window.location.assign('/profile')}>
             <i className="fas fa-user w-4"></i>
             <span>Profile</span>
           </DropdownMenuItem>

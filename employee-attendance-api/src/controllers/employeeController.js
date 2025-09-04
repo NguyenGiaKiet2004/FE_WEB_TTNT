@@ -7,33 +7,59 @@ exports.getAllEmployees = async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page || '1', 10));
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit || '10', 10)));
     const offset = (page - 1) * limit;
+    const departmentFilter = req.query.departmentId ? parseInt(req.query.departmentId, 10) : null;
 
     // Get tổng số lượng
-    const [[{ total }]] = await pool.query(
-      'SELECT COUNT(*) AS total FROM Users WHERE role != "super_admin"'
-    );
+    let total = 0;
+    if (departmentFilter && !Number.isNaN(departmentFilter)) {
+      const [[row]] = await pool.query(
+        'SELECT COUNT(*) AS total FROM Users WHERE role != "super_admin" AND department_id = ?',
+        [departmentFilter]
+      );
+      total = row.total || 0;
+    } else {
+      const [[row]] = await pool.query(
+        'SELECT COUNT(*) AS total FROM Users WHERE role != "super_admin"'
+      );
+      total = row.total || 0;
+    }
 
     // Get data phân trang
-    const [rows] = await pool.query(`
-      SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, d.department_name
-      FROM Users u
-      LEFT JOIN Departments d ON u.department_id = d.department_id
-      WHERE u.role != 'super_admin'
-      ORDER BY u.full_name
-      LIMIT ? OFFSET ?
-    `, [limit, offset]);
+    let rows;
+    if (departmentFilter && !Number.isNaN(departmentFilter)) {
+      [rows] = await pool.query(`
+        SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.address, u.department_id, u.employee_id, d.department_name
+        FROM Users u
+        LEFT JOIN Departments d ON u.department_id = d.department_id
+        WHERE u.role != 'super_admin' AND u.department_id = ?
+        ORDER BY u.full_name
+        LIMIT ? OFFSET ?
+      `, [departmentFilter, limit, offset]);
+    } else {
+      [rows] = await pool.query(`
+        SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.address, u.department_id, u.employee_id, d.department_name
+        FROM Users u
+        LEFT JOIN Departments d ON u.department_id = d.department_id
+        WHERE u.role != 'super_admin'
+        ORDER BY u.full_name
+        LIMIT ? OFFSET ?
+      `, [limit, offset]);
+    }
 
     const employees = rows.map((u) => ({
       id: u.user_id,
+      user_id: u.user_id, // Mã nhân viên chính
       name: u.full_name,
       fullName: u.full_name, // for Dashboard.jsx which expects fullName
       email: u.email,
-      employeeId: String(u.user_id),
+      employee_id: u.employee_id ? String(u.employee_id) : '', // Employee ID cho phân cấp phòng ban
+      employeeId: u.employee_id ? String(u.employee_id) : '', // Backward compatibility
       department: u.department_name ? { name: u.department_name } : null,
       role: u.role ? { id: u.role === 'hr_manager' ? 1 : 2, name: u.role } : null,
       status: 'active',
       faceImages: [],
       phoneNumber: u.phone_number,
+      address: u.address,
     }));
 
     const totalPages = Math.ceil(total / limit);
@@ -63,7 +89,7 @@ exports.getEmployeeById = async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, d.department_name
+      `SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, u.employee_id, d.department_name
        FROM Users u
        LEFT JOIN Departments d ON u.department_id = d.department_id
        WHERE u.user_id = ? AND u.role != 'super_admin'
@@ -78,10 +104,12 @@ exports.getEmployeeById = async (req, res) => {
     const u = rows[0];
     const mapped = {
       id: u.user_id,
+      user_id: u.user_id, // Mã nhân viên chính
       name: u.full_name,
       fullName: u.full_name,
       email: u.email,
-      employeeId: String(u.user_id),
+      employee_id: u.employee_id ? String(u.employee_id) : '', // Employee ID cho phân cấp phòng ban
+      employeeId: u.employee_id ? String(u.employee_id) : '', // Backward compatibility
       department: u.department_name ? { name: u.department_name } : null,
       role: u.role ? { id: u.role === 'hr_manager' ? 1 : 2, name: u.role } : null,
       status: 'active',
@@ -102,7 +130,7 @@ exports.createEmployee = async (req, res) => {
     console.log('🎯 Request headers:', req.headers);
     console.log('🎯 Request body:', req.body);
     
-    const { name, email, password, phoneNumber, departmentId, roleId, status = 'active' } = req.body;
+    const { name, email, password, phoneNumber, address = null, departmentId, roleId, status = 'active' } = req.body;
     
     if (!name || !email || !password || !departmentId || !roleId) {
       return res.status(400).json({ message: 'Missing required fields' });
@@ -167,15 +195,43 @@ exports.createEmployee = async (req, res) => {
       return res.status(400).json({ message: 'Invalid role' });
     }
 
+    // Tính employee_id tự động theo quy tắc:
+    // - HR Manager: employee_id = department_id * 10000
+    // - Employee: employee_id = base + next available (base = department_id * 10000 + 1 .. +9999)
+    let employee_id = null;
+    const base = department_id * 10000;
+    if (roleId === 'hr_manager') {
+      employee_id = base; // trưởng phòng
+      // Đảm bảo chưa có ai giữ vị trí trưởng phòng
+      const [[existingManager]] = await pool.query(
+        'SELECT user_id FROM Users WHERE department_id = ? AND employee_id = ?',
+        [department_id, employee_id]
+      );
+      if (existingManager) {
+        return res.status(400).json({ message: 'This department already has a manager (employee_id = base)' });
+      }
+    } else {
+      // Tìm employee_id kế tiếp trong khoảng (base+1 .. base+9999)
+      const [[{ maxEmpId }]] = await pool.query(
+        'SELECT MAX(employee_id) AS maxEmpId FROM Users WHERE department_id = ? AND employee_id BETWEEN ? AND ?',
+        [department_id, base + 1, base + 9999]
+      );
+      const nextId = (maxEmpId && !Number.isNaN(parseInt(maxEmpId, 10))) ? (parseInt(maxEmpId, 10) + 1) : (base + 1);
+      if (nextId > base + 9999) {
+        return res.status(400).json({ message: 'Employee ID range for this department is exhausted' });
+      }
+      employee_id = nextId;
+    }
+
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const password_hash = await bcrypt.hash(password, salt);
     
     // Thêm người dùng mới (user_id sẽ được MySQL tự động tạo)
     const [result] = await pool.query(
-      `INSERT INTO Users (full_name, email, phone_number, department_id, role, password_hash, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [name, email, phoneNumber || null, department_id, roleId, password_hash]
+      `INSERT INTO Users (full_name, email, phone_number, address, department_id, role, password_hash, employee_id, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [name, email, phoneNumber || null, address, department_id, roleId, password_hash, employee_id]
     );
 
     const newUserId = result.insertId;
@@ -183,7 +239,7 @@ exports.createEmployee = async (req, res) => {
     
     // Truy xuất người dùng đã tạo kèm thông tin phòng ban
     const [newUser] = await pool.query(
-      `SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, d.department_name
+      `SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, u.employee_id, d.department_name
        FROM Users u
        LEFT JOIN Departments d ON u.department_id = d.department_id
        WHERE u.user_id = ?`,
@@ -195,12 +251,14 @@ exports.createEmployee = async (req, res) => {
       name: u.full_name,
       fullName: u.full_name,
       email: u.email,
-      employeeId: String(u.user_id), // Auto-generated ID
+      employeeId: u.employee_id ? String(u.employee_id) : '',
+      employee_id: u.employee_id ? String(u.employee_id) : '',
       department: u.department_name ? { name: u.department_name } : null,
       role: u.role ? { id: u.role === 'hr_manager' ? 1 : 2, name: u.role } : null,
       status: status,
       faceImages: [],
       phoneNumber: u.phone_number,
+      address: u.address,
     }));
 
     return res.status(201).json(mapped[0]);
@@ -218,14 +276,19 @@ exports.updateEmployee = async (req, res) => {
       return res.status(400).json({ message: 'Invalid employee id' });
     }
 
-    const { name, email, phoneNumber, departmentId, roleId, status, employeeId } = req.body;
+    const { name, email, phoneNumber, address = null, departmentId, roleId, status, employeeId } = req.body;
     
     console.log('🔧 Update Employee - ID:', id);
     console.log('🔧 Update Employee - Data:', { name, email, phoneNumber, departmentId, roleId, status, employeeId });
     
-    // Không cho phép thay đổi mã nhân viên
-    if (employeeId && parseInt(employeeId) !== id) {
-      return res.status(400).json({ message: 'Employee ID cannot be changed' });
+    // Cho phép cập nhật employee_id theo yêu cầu mới (tùy chọn)
+    let employee_id = null;
+    if (employeeId !== undefined && employeeId !== null && String(employeeId).trim() !== '') {
+      const parsed = parseInt(String(employeeId).trim(), 10);
+      if (Number.isNaN(parsed)) {
+        return res.status(400).json({ message: 'employee_id must be a number' });
+      }
+      employee_id = parsed;
     }
     
     if (!name || !email || !departmentId || !roleId) {
@@ -291,17 +354,45 @@ exports.updateEmployee = async (req, res) => {
       return res.status(400).json({ message: 'Invalid role' });
     }
 
+    // Tính employee_id theo quy tắc nếu không được cung cấp thủ công
+    //  - base = department_id * 10000
+    //  - hr_manager: employee_id = base (đảm bảo không trùng với người khác)
+    //  - employee: nếu không truyền employee_id thì chọn MAX trong (base+1..base+9999) + 1
+    if (employee_id === null && department_id) {
+      const base = department_id * 10000;
+      if (roleId === 'hr_manager') {
+        const [[existingManager]] = await pool.query(
+          'SELECT user_id FROM Users WHERE department_id = ? AND employee_id = ? AND user_id != ?',
+          [department_id, base, id]
+        );
+        if (existingManager) {
+          return res.status(400).json({ message: 'This department already has a manager (employee_id = base)' });
+        }
+        employee_id = base;
+      } else {
+        const [[{ maxEmpId }]] = await pool.query(
+          'SELECT MAX(employee_id) AS maxEmpId FROM Users WHERE department_id = ? AND employee_id BETWEEN ? AND ? AND user_id != ?',
+          [department_id, base + 1, base + 9999, id]
+        );
+        const nextId = (maxEmpId && !Number.isNaN(parseInt(maxEmpId, 10))) ? (parseInt(maxEmpId, 10) + 1) : (base + 1);
+        if (nextId > base + 9999) {
+          return res.status(400).json({ message: 'Employee ID range for this department is exhausted' });
+        }
+        employee_id = nextId;
+      }
+    }
+
     // Cập nhật người dùng (user_id không thay đổi)
     await pool.query(
       `UPDATE Users 
-       SET full_name = ?, email = ?, phone_number = ?, department_id = ?, role = ?
+       SET full_name = ?, email = ?, phone_number = ?, address = ?, department_id = ?, role = ?, employee_id = ?
        WHERE user_id = ?`,
-      [name, email, phoneNumber || null, department_id, roleId, id]
+      [name, email, phoneNumber || null, address, department_id, roleId, employee_id, id]
     );
 
     // Lấy người dùng đã cập nhật
     const [updatedUser] = await pool.query(
-      `SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, d.department_name
+      `SELECT u.user_id, u.full_name, u.email, u.role, u.phone_number, u.department_id, u.employee_id, d.department_name
        FROM Users u
        LEFT JOIN Departments d ON u.department_id = d.department_id
        WHERE u.user_id = ?`,
@@ -317,12 +408,14 @@ exports.updateEmployee = async (req, res) => {
       name: u.full_name,
       fullName: u.full_name,
       email: u.email,
-      employeeId: String(u.user_id), // Keep original ID
+      employeeId: u.employee_id ? String(u.employee_id) : '',
+      employee_id: u.employee_id ? String(u.employee_id) : '',
       department: u.department_name ? { name: u.department_name } : null,
       role: u.role ? { id: u.role === 'hr_manager' ? 1 : 2, name: u.role } : null,
       status: status || 'active',
       faceImages: [],
       phoneNumber: u.phone_number,
+      address: u.address,
     }));
 
     return res.json(mapped[0]);

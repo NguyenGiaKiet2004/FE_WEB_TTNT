@@ -1,21 +1,23 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api-config";
 
 export default function EditEmployeeModal({ isOpen, onClose, employee, departments, roles }) {
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: "",
-    employeeId: "",
     email: "",
     phoneNumber: "",
-    departmentId: "",
+    address: "",
+    departmentId: "", // store department name for backend
+    departmentSelectValue: "", // UI select raw value `${id}|${name}`
     roleId: "",
     status: "active",
     faceImages: []
@@ -24,45 +26,29 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
   // Update form data when employee prop changes
   useEffect(() => {
     if (employee) {
-      setFormData({
+      const deptName = employee.department?.name || "";
+      const match = (departments || []).find(d => d.department_name === deptName);
+      setFormData(prev => ({
+        ...prev,
         name: employee.name || "",
-        employeeId: employee.employeeId || "",
         email: employee.email || "",
         phoneNumber: employee.phoneNumber || "",
-        departmentId: employee.department?.name || "",
+        address: employee.address || "",
+        departmentId: deptName,
+        departmentSelectValue: match ? `${match.department_id}|${match.department_name}` : "",
         roleId: employee.role?.name || "",
         status: employee.status || "active",
         faceImages: employee.faceImages || []
-      });
+      }));
     }
-  }, [employee]);
+  }, [employee, departments]);
 
   const updateEmployeeMutation = useMutation({
     mutationFn: async (employeeData) => {
-      const token = localStorage.getItem('token');
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      console.log('🔐 Frontend - Token:', token ? 'Present' : 'Missing');
-      console.log('🔐 Frontend - User:', user);
-      console.log('🔐 Frontend - User ID:', user.id || user.user_id);
-      
-      const response = await fetch(`http://localhost:3000/api/employees/${employee.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-          "user-id": user.id || user.user_id
-        },
-        body: JSON.stringify(employeeData),
+      return await apiRequest(`/employees/${employee.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(employeeData)
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Update failed:', response.status, errorData);
-        throw new Error(errorData.message || "Failed to update employee");
-      }
-      
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
@@ -85,7 +71,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.employeeId || !formData.email || !formData.departmentId || !formData.roleId) {
+    if (!formData.name || !formData.email || !formData.departmentId || !formData.roleId) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -104,6 +90,8 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
     }));
   };
 
+  const uniqueDepartments = Array.from(new Map((departments || []).map(d => [d.department_id, d])).values());
+
   if (!employee) return null;
 
   return (
@@ -111,6 +99,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Employee</DialogTitle>
+          <DialogDescription>Edit employee details.</DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -124,18 +113,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
                 required
               />
             </div>
-            <div>
-              <Label htmlFor="employeeId">Employee ID *</Label>
-              <Input
-                id="employeeId"
-                value={formData.employeeId}
-                onChange={(e) => handleInputChange("employeeId", e.target.value)}
-                required
-                disabled
-                className="bg-gray-100 cursor-not-allowed"
-              />
-              <p className="text-xs text-gray-500 mt-1">Employee ID cannot be changed</p>
-            </div>
+            {/* Employee ID removed - backend auto-assigns when department/role change */}
             <div>
               <Label htmlFor="email">Email *</Label>
               <Input
@@ -156,14 +134,26 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
               />
             </div>
             <div>
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => handleInputChange("address", e.target.value)}
+              />
+            </div>
+            <div>
               <Label htmlFor="departmentSelect">Department *</Label>
-              <Select id="departmentSelect" value={formData.departmentId} onValueChange={(value) => handleInputChange("departmentId", value)}>
+              <Select id="departmentSelect" value={formData.departmentSelectValue} onValueChange={(value) => {
+                const parts = String(value).split('|');
+                const name = parts.length > 1 ? parts.slice(1).join('|') : value;
+                setFormData(prev => ({ ...prev, departmentId: name, departmentSelectValue: value }));
+              }}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Department" />
+                  <SelectValue placeholder="Select Department">{formData.departmentId || undefined}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {departments.map(dept => (
-                    <SelectItem key={dept.department_id} value={dept.department_name}>{dept.department_name}</SelectItem>
+                  {uniqueDepartments.map(dept => (
+                    <SelectItem key={`dept-${dept.department_id}`} value={`${dept.department_id}|${dept.department_name}`}>{dept.department_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -176,7 +166,7 @@ export default function EditEmployeeModal({ isOpen, onClose, employee, departmen
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map(role => (
-                    <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                    <SelectItem key={`role-${role.id}`} value={role.name}>{role.name}</SelectItem>
                 ))}
                 </SelectContent>
               </Select>

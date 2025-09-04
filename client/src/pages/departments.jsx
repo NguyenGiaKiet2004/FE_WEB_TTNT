@@ -6,12 +6,17 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/api-config";
 import AddDepartmentModal from "@/components/modals/add-department-modal";
 import EditDepartmentModal from "@/components/modals/edit-department-modal";
+import { useAuthState } from "@/hooks/useAuth";
+import DepartmentDetailModal from "@/components/modals/department-detail-modal";
 
 export default function Departments() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const { toast } = useToast();
+  const { role } = useAuthState();
+  const isHR = role === 'hr_manager';
 
   const { data: departmentsResponse, isLoading } = useQuery({
     queryKey: ["/api/departments"],
@@ -24,6 +29,8 @@ export default function Departments() {
   });
 
   const departments = departmentsResponse?.departments || [];
+  const uniqueDepartments = Array.from(new Map((departments || []).map(d => [d.department_id, d])).values());
+  
 
   const deleteDepartmentMutation = useMutation({
     mutationFn: async (id) => {
@@ -98,7 +105,9 @@ export default function Departments() {
         <h2 className="text-xl font-semibold text-gray-800">Department Management</h2>
         <Button 
           onClick={() => setShowAddModal(true)}
-          className="bg-primary text-white hover:bg-blue-600"
+          className={`bg-primary text-white hover:bg-blue-600 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
+          disabled={isHR}
+          title={isHR ? 'Only Super Admin' : ''}
         >
           <i className="fas fa-plus mr-2"></i>
           Add Department
@@ -112,31 +121,35 @@ export default function Departments() {
             <p className="text-gray-500">No departments found</p>
           </div>
         ) : (
-          departments.map((department) => (
-            <div key={department.department_id} className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between mb-4">
+          uniqueDepartments.map((department) => (
+            <div key={`dept-${department.department_id}`} className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-200">
+              <div className="flex items-start justify-between mb-4">
                 <div className={`w-12 h-12 ${getDepartmentIconBg(department.department_name)} rounded-lg flex items-center justify-center`}>
                   <i className={`${getDepartmentIcon(department.department_name)} text-xl`}></i>
                 </div>
                 <div className="flex space-x-2">
                   <button 
-                    className="text-primary hover:text-blue-600"
+                    className={`text-primary hover:text-blue-600 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
                     onClick={() => {
+                      if (isHR) return;
                       setSelectedDepartment(department);
                       setShowEditModal(true);
                     }}
+                    disabled={isHR}
+                    title={isHR ? 'Only Super Admin' : 'Edit department'}
                   >
                     <i className="fas fa-edit"></i>
                   </button>
                   <button 
-                    className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                    className={`text-red-600 hover:text-red-800 disabled:opacity-50 ${isHR ? 'opacity-50 cursor-not-allowed' : ''}`}
                     onClick={() => {
+                      if (isHR) return;
                       if (window.confirm(`Are you sure you want to delete ${department.department_name}? This action cannot be undone.`)) {
                         deleteDepartmentMutation.mutate(department.department_id);
                       }
                     }}
-                    disabled={deleteDepartmentMutation.isPending}
-                    title={deleteDepartmentMutation.isPending ? "Deleting..." : "Delete department"}
+                    disabled={isHR || deleteDepartmentMutation.isPending}
+                    title={isHR ? 'Only Super Admin' : (deleteDepartmentMutation.isPending ? "Deleting..." : "Delete department")}
                   >
                     {deleteDepartmentMutation.isPending ? (
                       <i className="fas fa-spinner fa-spin"></i>
@@ -146,14 +159,27 @@ export default function Departments() {
                   </button>
                 </div>
               </div>
-                             <h3 className="text-lg font-semibold text-gray-800 mb-2">{department.department_name}</h3>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">
-                  Employees: <span className="font-medium text-gray-700">{department.employeeCount || 0}</span>
-                </span>
-                <span className="text-gray-500">
-                  Manager: <span className="font-medium text-gray-700">{department.manager || "N/A"}</span>
-                </span>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 max-w-[260px] truncate" title={department.department_name}>{department.department_name}</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-gray-50 rounded-lg border px-3 py-2">
+                  <div className="text-gray-500">Employees</div>
+                  <div className="font-medium text-gray-800">{department.employeeCount || 0}</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg border px-3 py-2">
+                  <div className="text-gray-500">Manager</div>
+                  <div className="font-medium text-gray-800 max-w-[180px] truncate" title={department.manager_name || 'N/A'}>{department.manager_name || 'N/A'}</div>
+                </div>
+              </div>
+              <div className="mt-5">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedDepartment(department);
+                    setShowDetailModal(true);
+                  }}
+                >
+                  View Details
+                </Button>
               </div>
             </div>
           ))
@@ -172,6 +198,15 @@ export default function Departments() {
           isOpen={showEditModal} 
           onClose={() => setShowEditModal(false)}
           department={selectedDepartment}
+        />
+      )}
+
+      {showDetailModal && (
+        <DepartmentDetailModal
+          isOpen={showDetailModal}
+          onClose={() => setShowDetailModal(false)}
+          department={selectedDepartment}
+          employeesQueryKey={["/employees", selectedDepartment?.department_id, 100, 1]}
         />
       )}
     </div>
